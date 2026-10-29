@@ -92,6 +92,30 @@ def test_tryon_missing_gemini_api_key():
         assert "GEMINI_API_KEY is not configured" in res.json()["detail"]
 
 
+def test_tryon_successful_generation_idm_vton():
+    token = get_auth_token("success_idm_vton")
+    person_img = create_test_image_bytes((120, 150, 180))
+    garment_img = create_test_image_bytes((220, 80, 50))
+    mock_result_bytes = create_test_image_bytes((100, 200, 100))
+
+    with patch("app.api.v1.tryon.call_idm_vton", return_value=mock_result_bytes):
+        res = client.post(
+            "/api/v1/try-on/generate",
+            headers={"Authorization": f"Bearer {token}"},
+            files={
+                "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
+                "garment_image": ("jacket.jpg", io.BytesIO(garment_img), "image/jpeg"),
+            },
+            data={"prompt": "Hot Wheels racing T-shirt", "model": "idm-vton"},
+        )
+
+        assert res.status_code == 201
+        data = res.json()
+        assert data["id"] > 0
+        assert "tryon/results" in data["result_image_url"]
+        assert data["status"] == "completed"
+
+
 def test_tryon_successful_generation_qwen():
     token = get_auth_token("success_user_qwen")
     person_img = create_test_image_bytes((120, 150, 180))
@@ -107,7 +131,7 @@ def test_tryon_successful_generation_qwen():
                     "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
                     "garment_image": ("dress.jpg", io.BytesIO(garment_img), "image/jpeg"),
                 },
-                data={"prompt": "Realistic drape over shoulders"},
+                data={"prompt": "Realistic drape over shoulders", "model": "qwen-image-edit"},
             )
 
             assert res.status_code == 201
@@ -196,16 +220,15 @@ def test_tryon_with_existing_wardrobe_garment():
     person_img = create_test_image_bytes()
     mock_result_bytes = create_test_image_bytes((60, 60, 180))
 
-    with patch.object(settings, "NVIDIA_API_KEY", "nvapi-test-mock-key"):
-        with patch("app.services.nvidia_tryon.call_nvidia_qwen_image_edit", return_value=mock_result_bytes):
-            res = client.post(
-                "/api/v1/try-on/generate",
-                headers={"Authorization": f"Bearer {token}"},
-                files={"person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg")},
-                data={"garment_id": garment_id},
-            )
+    with patch("app.api.v1.tryon.call_idm_vton", return_value=mock_result_bytes):
+        res = client.post(
+            "/api/v1/try-on/generate",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg")},
+            data={"garment_id": garment_id},
+        )
 
-            assert res.status_code == 201
-            data = res.json()
-            assert data["garment_id"] == garment_id
-            assert "garments" in data["garment_image_url"]
+        assert res.status_code == 201
+        data = res.json()
+        assert data["garment_id"] == garment_id
+        assert "garments" in data["garment_image_url"]

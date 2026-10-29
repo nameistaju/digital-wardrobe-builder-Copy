@@ -14,6 +14,7 @@ from app.models.tryon import TryOnRecord
 from app.schemas.tryon import TryOnStatusResponse, TryOnResponse, TryOnHistoryResponse
 from app.services.nvidia_tryon import generate_virtual_tryon
 from app.services.gemini_tryon import call_gemini_image_edit
+from app.services.idm_vton import call_idm_vton
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +23,16 @@ router = APIRouter()
 
 @router.get("/status", response_model=TryOnStatusResponse)
 async def get_tryon_status():
-    """Returns availability and configuration state of Virtual Try-On services (NVIDIA & Google Gemini)."""
+    """Returns availability and configuration state of Virtual Try-On services (IDM-VTON, Google Gemini, NVIDIA)."""
+    idm_ready = bool(settings.IDM_VTON_SPACE and settings.HF_TOKEN and settings.HF_TOKEN.strip())
     nvidia_ready = bool(settings.NVIDIA_API_KEY and settings.NVIDIA_API_KEY.strip())
     gemini_ready = bool(settings.GEMINI_API_KEY and settings.GEMINI_API_KEY.strip())
     return TryOnStatusResponse(
-        is_configured=nvidia_ready or gemini_ready,
-        model_name="NVIDIA Qwen NIM & Google Gemini",
-        endpoint=settings.NVIDIA_TRYON_ENDPOINT,
+        is_configured=idm_ready or nvidia_ready or gemini_ready,
+        model_name="IDM-VTON (ECCV 2024), Google Gemini & NVIDIA NIM",
+        endpoint=settings.IDM_VTON_SPACE,
         available_models=[
+            "idm-vton",
             "gemini-nano-banana-2.1",
             "gemini-3.1-flash-image",
             "gemini-3.1-flash-lite-image",
@@ -37,6 +40,7 @@ async def get_tryon_status():
             "qwen-image-edit",
             "qwen-image",
         ],
+        idm_vton_configured=idm_ready,
         gemini_configured=gemini_ready,
         nvidia_configured=nvidia_ready,
     )
@@ -48,7 +52,7 @@ async def create_virtual_tryon(
     garment_image: Optional[UploadFile] = File(None, description="Clothing product photograph"),
     garment_id: Optional[int] = Form(None, description="ID of existing wardrobe item to try on"),
     prompt: Optional[str] = Form(None, description="Optional styling or draping instruction"),
-    model: Optional[str] = Form("qwen-image-edit", description="Model engine to use (e.g. 'qwen-image-edit', 'qwen-image', 'gemini-2.5-flash-image')"),
+    model: Optional[str] = Form("idm-vton", description="Model engine to use (e.g. 'idm-vton', 'gemini-nano-banana-2.1', 'qwen-image-edit')"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -118,19 +122,26 @@ async def create_virtual_tryon(
     )
 
     # Call AI Virtual Try-On service based on selected model
-    if model and model.lower().startswith("gemini"):
+    selected_model = (model or "idm-vton").lower().strip()
+    if selected_model in ("idm-vton", "idm_vton", "default"):
+        generated_bytes = await call_idm_vton(
+            person_bytes=person_bytes,
+            garment_bytes=garment_bytes,
+            garment_description=prompt,
+        )
+    elif selected_model.startswith("gemini"):
         generated_bytes = await call_gemini_image_edit(
             person_bytes=person_bytes,
             garment_bytes=garment_bytes,
             custom_prompt=prompt,
-            model_name=model,
+            model_name=selected_model,
         )
     else:
         generated_bytes = await generate_virtual_tryon(
             person_bytes=person_bytes,
             garment_bytes=garment_bytes,
             custom_prompt=prompt,
-            model=model,
+            model=selected_model,
         )
 
     # Save generated AI result image

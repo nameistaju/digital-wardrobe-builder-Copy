@@ -8,11 +8,15 @@ class TryOnStatusResponse(BaseModel):
     model_name: str
     endpoint: str
     available_models: List[str] = [
+        "idm-vton",
+        "gemini-nano-banana-2.1",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite-image",
+        "gemini-2.5-flash-image",
         "qwen-image-edit",
         "qwen-image",
-        "gemini-2.5-flash-image",
-        "gemini-3.1-flash-image",
     ]
+    idm_vton_configured: bool = True
     gemini_configured: bool = False
     nvidia_configured: bool = False
 

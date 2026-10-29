@@ -93,6 +93,16 @@ class Settings(BaseSettings):
         description="Default Gemini image model (e.g. gemini-2.5-flash-image or gemini-3.1-flash-image)",
     )
 
+    # Dedicated Neural Virtual Try-On (IDM-VTON)
+    HF_TOKEN: Optional[str] = Field(
+        default=None,
+        description="Hugging Face User Access Token for ZeroGPU quota on IDM-VTON space",
+    )
+    IDM_VTON_SPACE: str = Field(
+        default="yisol/IDM-VTON",
+        description="Dedicated IDM-VTON space identifier",
+    )
+
     @field_validator("PORT", mode="before")
     @classmethod
     def validate_port(cls, v: object) -> int:
