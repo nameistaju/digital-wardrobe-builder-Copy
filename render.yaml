@@ -1,0 +1,36 @@
+# Render Blueprint for Digital Wardrobe Builder Backend
+# Learn more: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: digital-wardrobe-api
+    runtime: python
+    region: oregon # Free tier region
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # Set in Render Dashboard: Supabase PostgreSQL connection string
+      - key: SECRET_KEY
+        generateValue: true # Generates secure random 256-bit secret key on Render
+      - key: FRONTEND_ORIGIN
+        sync: false # Set in Render Dashboard: your Vercel deployment URL (e.g. https://digital-wardrobe.vercel.app)
+      - key: CORS_ORIGINS
+        sync: false # Optional: comma-separated list of additional allowed origins
+      - key: STORAGE_PROVIDER
+        value: r2 # Uses Cloudflare R2 in production
+      - key: R2_BUCKET_NAME
+        value: digital-wardrobe-assets
+      - key: R2_ACCOUNT_ID
+        sync: false # Set in Render Dashboard: Cloudflare Account ID
+      - key: R2_ACCESS_KEY_ID
+        sync: false # Set in Render Dashboard: R2 Access Key ID
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false # Set in Render Dashboard: R2 Secret Access Key
+      - key: R2_ENDPOINT_URL
+        sync: false # Optional override
