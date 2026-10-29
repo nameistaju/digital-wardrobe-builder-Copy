@@ -50,10 +50,12 @@ export function UploadModal({ isOpen, onClose, onGarmentAdded }: UploadModalProp
 
       <div
         ref={modalRef}
-        className="relative z-10 w-full max-w-2xl bg-[#faf8f5] rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-2xl transition-all max-h-[90vh] overflow-y-auto"
+        className={`relative z-10 w-full ${
+          mode === "full-outfit" ? "max-w-5xl" : "max-w-2xl"
+        } bg-[#faf8f5] rounded-3xl border border-stone-200 shadow-2xl transition-all max-h-[92vh] flex flex-col overflow-hidden`}
       >
-        {/* Header */}
-        <div className="flex items-start justify-between pb-5 border-b border-stone-200">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-20 flex items-start justify-between p-6 sm:px-8 sm:pt-7 sm:pb-5 border-b border-stone-200 bg-[#faf8f5]/95 backdrop-blur-xs">
           <div className="flex items-center gap-3">
             {mode !== "select" && (
               <button
@@ -61,6 +63,7 @@ export function UploadModal({ isOpen, onClose, onGarmentAdded }: UploadModalProp
                 onClick={() => setMode("select")}
                 className="p-1.5 rounded-lg border border-stone-300 hover:bg-stone-100 text-stone-700 transition-colors"
                 title="Back to options"
+                aria-label="Back to options"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
@@ -79,14 +82,15 @@ export function UploadModal({ isOpen, onClose, onGarmentAdded }: UploadModalProp
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-2 rounded-xl text-stone-400 hover:text-stone-900 hover:bg-stone-200/60 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="py-6">
+        {/* Modal Scrollable Body */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8">
           {mode === "select" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               {/* Option 1: Full Outfit Photo */}

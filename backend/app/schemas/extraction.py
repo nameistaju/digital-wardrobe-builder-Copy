@@ -14,10 +14,12 @@ class CandidateGarment(BaseModel):
     id: str
     category: str
     subcategory: Optional[str] = None
-    confidence: float
+    confidence: Optional[float] = None
     image_url: str
     bounding_box: Dict[str, float]
-    status: str = "pending"  # pending, approved, rejected
+    status: str = "needs_review"  # needs_review, approved, rejected
+    requires_correction: bool = False
+    review_reason: Optional[str] = None
 
 
 class ExtractionJobOut(BaseModel):

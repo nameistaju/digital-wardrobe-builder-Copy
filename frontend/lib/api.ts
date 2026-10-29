@@ -51,10 +51,12 @@ export interface CandidateGarment {
   id: string;
   category: string;
   subcategory?: string | null;
-  confidence: number;
+  confidence?: number | null;
   image_url: string;
   bounding_box: BoundingBox;
-  status: "pending" | "approved" | "rejected";
+  status: "needs_review" | "pending" | "approved" | "rejected";
+  requires_correction?: boolean;
+  review_reason?: string | null;
 }
 
 export interface ExtractionJob {
@@ -336,11 +338,14 @@ export async function refineCandidate(
   jobId: number,
   candidateId: string,
   boundingBox: BoundingBox
-): Promise<void> {
-  return apiFetch<void>(`/api/v1/extraction/${jobId}/candidates/${candidateId}/refine`, {
-    method: "POST",
-    body: JSON.stringify({ bounding_box: boundingBox, action: "crop" }),
-  });
+): Promise<{ message: string; candidate: CandidateGarment }> {
+  return apiFetch<{ message: string; candidate: CandidateGarment }>(
+    `/api/v1/extraction/${jobId}/candidates/${candidateId}/refine`,
+    {
+      method: "POST",
+      body: JSON.stringify({ bounding_box: boundingBox, action: "crop" }),
+    }
+  );
 }
 
 // Outfits API

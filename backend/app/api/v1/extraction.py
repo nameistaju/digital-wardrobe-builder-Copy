@@ -8,7 +8,7 @@ from PIL import Image
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.core.storage import storage_service
-from app.services.ai_segmentation import segment_full_body_outfit, remove_image_background
+from app.services.ai_segmentation import segment_full_body_outfit, remove_image_background, crop_custom_bounding_box
 from app.models.user import User
 from app.models.extraction import ExtractionJob
 from app.models.garment import Garment
@@ -49,10 +49,12 @@ async def run_async_extraction(job_id: int, image_bytes: bytes, filename: str):
                     "id": c["id"],
                     "category": c["category"],
                     "subcategory": c["subcategory"],
-                    "confidence": c["confidence"],
+                    "confidence": c.get("confidence"),
                     "image_url": cand_url,
                     "bounding_box": c["bounding_box"],
-                    "status": "pending",
+                    "status": c.get("status", "needs_review"),
+                    "requires_correction": c.get("requires_correction", False),
+                    "review_reason": c.get("review_reason"),
                 })
 
             job.candidate_garments = stored_candidates
@@ -218,7 +220,24 @@ async def refine_candidate(
         if c.get("id") == candidate_id:
             target = c
             if refine_data.bounding_box:
-                c["bounding_box"] = refine_data.bounding_box
+                source_bytes = await storage_service.get_file_bytes(job.source_image_url)
+                if source_bytes:
+                    try:
+                        new_bytes, tight_box = crop_custom_bounding_box(source_bytes, refine_data.bounding_box)
+                        new_url = await storage_service.save_file(
+                            new_bytes,
+                            f"refined_{c['category']}_{c['id']}.png",
+                            subfolder="candidates",
+                        )
+                        c["image_url"] = new_url
+                        c["bounding_box"] = tight_box
+                        c["requires_correction"] = False
+                        c["review_reason"] = None
+                    except Exception as err:
+                        logger.error("Failed to re-crop candidate %s: %s", candidate_id, err)
+                        c["bounding_box"] = refine_data.bounding_box
+                else:
+                    c["bounding_box"] = refine_data.bounding_box
             break
 
     if not target:
