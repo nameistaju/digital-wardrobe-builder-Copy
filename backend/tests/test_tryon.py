@@ -1,8 +1,8 @@
-import base64
 import io
 import uuid
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from fastapi.testclient import TestClient
+from fastapi import HTTPException
 from PIL import Image
 import pytest
 
@@ -35,10 +35,10 @@ def test_tryon_status():
     data = res.json()
     assert "is_configured" in data
     assert "model_name" in data
+    assert data["model_name"] == "IDM-VTON (ECCV 2024)"
     assert "endpoint" in data
-    assert "available_models" in data
-    assert "gemini-2.5-flash-image" in data["available_models"]
-    assert len(data["model_name"]) > 0
+    assert "status" in data
+    assert data["status"] in ("available", "unavailable", "quota_exceeded")
 
 
 def test_tryon_missing_garment_validation():
@@ -54,12 +54,12 @@ def test_tryon_missing_garment_validation():
     assert "Either a garment image file or an existing garment_id must be provided" in res.json()["detail"]
 
 
-def test_tryon_missing_api_key():
-    token = get_auth_token("no_key")
+def test_tryon_missing_hf_token():
+    token = get_auth_token("no_hf_token")
     person_img = create_test_image_bytes()
     garment_img = create_test_image_bytes((50, 150, 50))
 
-    with patch.object(settings, "NVIDIA_API_KEY", None):
+    with patch.object(settings, "HF_TOKEN", None):
         res = client.post(
             "/api/v1/try-on/generate",
             headers={"Authorization": f"Bearer {token}"},
@@ -67,29 +67,9 @@ def test_tryon_missing_api_key():
                 "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
                 "garment_image": ("garment.jpg", io.BytesIO(garment_img), "image/jpeg"),
             },
-            data={"model": "qwen-image-edit"},
         )
         assert res.status_code == 503
-        assert "NVIDIA_API_KEY is not configured" in res.json()["detail"]
-
-
-def test_tryon_missing_gemini_api_key():
-    token = get_auth_token("no_gemini_key")
-    person_img = create_test_image_bytes()
-    garment_img = create_test_image_bytes((50, 150, 50))
-
-    with patch.object(settings, "GEMINI_API_KEY", None):
-        res = client.post(
-            "/api/v1/try-on/generate",
-            headers={"Authorization": f"Bearer {token}"},
-            files={
-                "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
-                "garment_image": ("garment.jpg", io.BytesIO(garment_img), "image/jpeg"),
-            },
-            data={"model": "gemini-2.5-flash-image"},
-        )
-        assert res.status_code == 503
-        assert "GEMINI_API_KEY is not configured" in res.json()["detail"]
+        assert "HF_TOKEN is not configured" in res.json()["detail"]
 
 
 def test_tryon_successful_generation_idm_vton():
@@ -106,100 +86,27 @@ def test_tryon_successful_generation_idm_vton():
                 "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
                 "garment_image": ("jacket.jpg", io.BytesIO(garment_img), "image/jpeg"),
             },
-            data={"prompt": "Hot Wheels racing T-shirt", "model": "idm-vton"},
+            data={"prompt": "Hot Wheels racing T-shirt"},
         )
 
         assert res.status_code == 201
         data = res.json()
         assert data["id"] > 0
         assert "tryon/results" in data["result_image_url"]
+        assert "tryon/persons" in data["person_image_url"]
+        assert "tryon/garments" in data["garment_image_url"]
+        assert data["prompt"] == "Hot Wheels racing T-shirt"
         assert data["status"] == "completed"
 
-
-def test_tryon_successful_generation_qwen():
-    token = get_auth_token("success_user_qwen")
-    person_img = create_test_image_bytes((120, 150, 180))
-    garment_img = create_test_image_bytes((220, 80, 50))
-    mock_result_bytes = create_test_image_bytes((100, 200, 100))
-
-    with patch.object(settings, "NVIDIA_API_KEY", "nvapi-test-mock-key"):
-        with patch("app.services.nvidia_tryon.call_nvidia_qwen_image_edit", return_value=mock_result_bytes):
-            res = client.post(
-                "/api/v1/try-on/generate",
-                headers={"Authorization": f"Bearer {token}"},
-                files={
-                    "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
-                    "garment_image": ("dress.jpg", io.BytesIO(garment_img), "image/jpeg"),
-                },
-                data={"prompt": "Realistic drape over shoulders", "model": "qwen-image-edit"},
-            )
-
-            assert res.status_code == 201
-            data = res.json()
-            assert data["id"] > 0
-            assert "tryon/results" in data["result_image_url"]
-            assert "tryon/persons" in data["person_image_url"]
-            assert "tryon/garments" in data["garment_image_url"]
-            assert data["prompt"] == "Realistic drape over shoulders"
-            assert data["status"] == "completed"
-
-            # Check history
-            hist_res = client.get(
-                "/api/v1/try-on/history",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            assert hist_res.status_code == 200
-            hist = hist_res.json()
-            assert hist["total"] >= 1
-            assert hist["items"][0]["id"] == data["id"]
-
-
-def test_tryon_successful_generation_qwen_image_model():
-    token = get_auth_token("success_qwen_image")
-    person_img = create_test_image_bytes((110, 140, 170))
-    garment_img = create_test_image_bytes((210, 70, 40))
-    mock_result_bytes = create_test_image_bytes((90, 190, 90))
-
-    with patch.object(settings, "NVIDIA_API_KEY", "nvapi-test-mock-key"):
-        with patch("app.services.nvidia_tryon.call_nvidia_qwen_image", return_value=mock_result_bytes):
-            res = client.post(
-                "/api/v1/try-on/generate",
-                headers={"Authorization": f"Bearer {token}"},
-                files={
-                    "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
-                    "garment_image": ("jacket.jpg", io.BytesIO(garment_img), "image/jpeg"),
-                },
-                data={"prompt": "Stylish leather jacket", "model": "qwen-image"},
-            )
-
-            assert res.status_code == 201
-            data = res.json()
-            assert data["id"] > 0
-            assert data["status"] == "completed"
-
-
-def test_tryon_successful_generation_gemini():
-    token = get_auth_token("success_gemini")
-    person_img = create_test_image_bytes((130, 120, 190))
-    garment_img = create_test_image_bytes((230, 80, 50))
-    mock_result_bytes = create_test_image_bytes((80, 180, 100))
-
-    with patch("app.api.v1.tryon.call_gemini_image_edit", return_value=mock_result_bytes):
-        res = client.post(
-            "/api/v1/try-on/generate",
+        # Check history has exactly this look
+        hist_res = client.get(
+            "/api/v1/try-on/history",
             headers={"Authorization": f"Bearer {token}"},
-            files={
-                "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
-                "garment_image": ("jacket.jpg", io.BytesIO(garment_img), "image/jpeg"),
-            },
-            data={"prompt": "Fit shirt naturally", "model": "gemini-2.5-flash-image"},
         )
-
-        assert res.status_code == 201
-        data = res.json()
-        assert data["id"] > 0
-        assert data["status"] == "completed"
-        assert "tryon/results" in data["result_image_url"]
+        assert hist_res.status_code == 200
+        hist = hist_res.json()
+        assert hist["total"] >= 1
+        assert hist["items"][0]["id"] == data["id"]
 
 
 def test_tryon_with_existing_wardrobe_garment():
@@ -232,3 +139,31 @@ def test_tryon_with_existing_wardrobe_garment():
         data = res.json()
         assert data["garment_id"] == garment_id
         assert "garments" in data["garment_image_url"]
+
+
+def test_tryon_failure_does_not_save_history():
+    token = get_auth_token("fail_no_history")
+    person_img = create_test_image_bytes((120, 150, 180))
+    garment_img = create_test_image_bytes((220, 80, 50))
+
+    with patch(
+        "app.api.v1.tryon.call_idm_vton",
+        side_effect=HTTPException(status_code=502, detail="ZeroGPU error"),
+    ):
+        res = client.post(
+            "/api/v1/try-on/generate",
+            headers={"Authorization": f"Bearer {token}"},
+            files={
+                "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
+                "garment_image": ("jacket.jpg", io.BytesIO(garment_img), "image/jpeg"),
+            },
+        )
+        assert res.status_code == 502
+
+        # Verify no record created in history
+        hist_res = client.get(
+            "/api/v1/try-on/history",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert hist_res.status_code == 200
+        assert hist_res.json()["total"] == 0

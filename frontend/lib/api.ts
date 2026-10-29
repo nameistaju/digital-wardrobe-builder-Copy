@@ -103,12 +103,12 @@ export interface HealthResponse {
 
 export interface TryOnStatusResponse {
   is_configured: boolean;
+  status: "available" | "unavailable" | "quota_exceeded" | string;
   model_name: string;
   endpoint: string;
-  available_models?: string[];
-  idm_vton_configured?: boolean;
-  gemini_configured?: boolean;
-  nvidia_configured?: boolean;
+  detail?: string | null;
+  stage?: string | null;
+  hardware?: string | null;
 }
 
 export interface TryOnRecord {
@@ -380,7 +380,7 @@ export async function deleteOutfit(outfitId: number): Promise<void> {
   });
 }
 
-// AI Virtual Try-On API (NVIDIA Qwen-Image-Edit)
+// AI Virtual Try-On API (IDM-VTON)
 export async function getTryOnStatus(): Promise<TryOnStatusResponse> {
   return apiFetch<TryOnStatusResponse>("/api/v1/try-on/status");
 }

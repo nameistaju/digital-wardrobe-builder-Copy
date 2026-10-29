@@ -5,20 +5,12 @@ from pydantic import BaseModel, ConfigDict
 
 class TryOnStatusResponse(BaseModel):
     is_configured: bool
-    model_name: str
-    endpoint: str
-    available_models: List[str] = [
-        "idm-vton",
-        "gemini-nano-banana-2.1",
-        "gemini-3.1-flash-image",
-        "gemini-3.1-flash-lite-image",
-        "gemini-2.5-flash-image",
-        "qwen-image-edit",
-        "qwen-image",
-    ]
-    idm_vton_configured: bool = True
-    gemini_configured: bool = False
-    nvidia_configured: bool = False
+    status: str = "available"  # "available", "unavailable", "quota_exceeded"
+    model_name: str = "IDM-VTON (ECCV 2024)"
+    endpoint: str = "yisol/IDM-VTON"
+    detail: Optional[str] = None
+    stage: Optional[str] = None
+    hardware: Optional[str] = None
 
 
 class TryOnResponse(BaseModel):

@@ -33,11 +33,11 @@ This project supports **zero-setup local development** (Windows PowerShell, SQLi
 ## 2. AI Processing Audit & Disclosures
 
 To maintain absolute technical honesty:
-1. **AI Virtual Try-On (NVIDIA Qwen-Image-Edit NIM)**:
-   - Real, photorealistic AI image generation using NVIDIA NIM's `qwen/qwen-image-edit` model.
+1. **AI Virtual Try-On (IDM-VTON ECCV 2024 Dedicated Diffusion)**:
+   - High-fidelity, dedicated neural virtual try-on using IDM-VTON (*Improving Diffusion Models for Authentic Virtual Try-on in the Wild*).
    - Accepts a real photograph of a person and a separate clothing garment (either uploaded or chosen directly from your digital wardrobe).
-   - Backend safely proxies requests via `NVIDIA_API_KEY` (never leaked to frontend).
-   - Generates photorealistic draping, texture synthesis, and shadows while preserving the person's face, hair, and body pose.
+   - Backend securely authenticates with Hugging Face ZeroGPU via `HF_TOKEN` (never leaked to frontend).
+   - Generates photorealistic draping, sleeve wrapping, and texture synthesis while preserving the person's face, hair, and body pose.
    - Resulting high-resolution looks can be downloaded as PNG or saved into outfits.
 2. **Background Removal**: Uses `rembg` (U2Net neural network) when installed. In lightweight CPU environments without `rembg`, it falls back seamlessly to deterministic Pillow-based corner-sampling luminance/contour alpha isolation.
 3. **Garment Extraction from Full-Body Photos**:
@@ -95,8 +95,9 @@ npm run dev -- --port 3000
 | `R2_ACCESS_KEY_ID` | If R2 | None | Cloudflare R2 API token Access Key ID. |
 | `R2_SECRET_ACCESS_KEY` | If R2 | None | Cloudflare R2 API token Secret Access Key. |
 | `R2_ENDPOINT_URL` | Optional | Constructed from Account ID | Explicit S3 API endpoint if custom domain is used. |
-| `NVIDIA_API_KEY` | Optional (Try-On) | None | Free NVIDIA NIM API key for Qwen-Image-Edit (never exposed to client). |
-| `NVIDIA_TRYON_ENDPOINT` | Optional | `https://integrate.api.nvidia.com/v1/genai/qwen/qwen-image-edit` | NVIDIA NIM endpoint URL for Qwen-Image-Edit. |
+| `HF_TOKEN` | Required (Try-On) | None | Free Hugging Face User Access Token for IDM-VTON ZeroGPU quota. |
+| `IDM_VTON_SPACE` | Optional | `yisol/IDM-VTON` | Dedicated IDM-VTON space identifier. |
+| `TRYON_TIMEOUT_SECONDS` | Optional | `120` | Timeout in seconds for AI virtual try-on requests. |
 
 ### Frontend (`frontend/.env.local` or Vercel Dashboard)
 
@@ -205,16 +206,17 @@ All user records, garment assets, and saved outfit configurations are preserved 
 
 ---
 
-## 9. AI Virtual Try-On Setup (NVIDIA Qwen-Image-Edit)
+## 9. AI Virtual Try-On Setup (IDM-VTON)
 
-The Virtual Try-On Studio connects directly to NVIDIA NIM's official `qwen/qwen-image-edit` foundation model.
+The Virtual Try-On Studio connects directly to the dedicated IDM-VTON neural diffusion model (`yisol/IDM-VTON`).
 
 ### How to Activate Real AI Virtual Try-On:
-1. Visit the NVIDIA Build model page: [https://build.nvidia.com/qwen/qwen-image-edit](https://build.nvidia.com/qwen/qwen-image-edit).
-2. Sign in with your free NVIDIA Developer account and click **Get API Key**.
+1. Visit Hugging Face Tokens: [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+2. Create a free Read access token and copy it.
 3. In `backend/.env` (or Render Dashboard for production), configure:
    ```env
-   NVIDIA_API_KEY=nvapi-your-key-here
+   HF_TOKEN=hf_your_token_here
+   IDM_VTON_SPACE=yisol/IDM-VTON
    ```
 4. Start the app and navigate to the **Virtual Try-On** studio in the navigation bar.
 5. Upload a photo of yourself (or torso), choose a garment from your wardrobe or upload a new product photo, and click **Generate Real AI Try-On**.

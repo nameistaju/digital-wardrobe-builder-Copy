@@ -60,9 +60,6 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
   const [garmentFile, setGarmentFile] = useState<File | null>(null);
   const [garmentPreview, setGarmentPreview] = useState<string | null>(null);
 
-  // Model Engine Choice
-  const [selectedModel, setSelectedModel] = useState<string>("idm-vton");
-
   const [customPrompt, setCustomPrompt] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStep, setGeneratingStep] = useState<string>("");
@@ -151,20 +148,11 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
 
     setError(null);
     setIsGenerating(true);
-    const modelName =
-      selectedModel === "idm-vton"
-        ? "IDM-VTON (ECCV 2024 Neural Try-On)"
-        : selectedModel.startsWith("gemini")
-        ? "Google Gemini"
-        : selectedModel === "qwen-image-edit"
-        ? "Qwen-Image-Edit"
-        : "Qwen-Image";
-    setGeneratingStep(`Preparing images for ${modelName}...`);
+    setGeneratingStep("Preparing images for IDM-VTON...");
 
     try {
       const formData = new FormData();
       formData.append("person_image", personFile);
-      formData.append("model", selectedModel);
 
       if (garmentMode === "upload" && garmentFile) {
         formData.append("garment_image", garmentFile);
@@ -176,7 +164,7 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
         formData.append("prompt", customPrompt.trim());
       }
 
-      setGeneratingStep(`Generating realistic try-on via ${modelName}...`);
+      setGeneratingStep("IDM-VTON neural diffusion warp in progress...");
 
       const record = await generateVirtualTryOn(formData);
       setCurrentResult(record);
@@ -217,170 +205,104 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
       {/* Studio Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-stone-200">
         <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-amber-50 text-amber-900 border border-amber-200 mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            <span>
-              {selectedModel === "idm-vton"
-                ? "IDM-VTON Neural Try-On (ECCV 2024)"
-                : selectedModel.startsWith("gemini")
-                ? "Google Gemini Multimodal AI"
-                : selectedModel === "qwen-image-edit"
-                ? "NVIDIA NIM: Qwen-Image-Edit"
-                : "NVIDIA NIM: Qwen-Image Foundation"}
-            </span>
+          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-emerald-50 text-emerald-900 border border-emerald-200 mb-2">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Dedicated Neural Try-On Engine</span>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-stone-950 font-serif">
             AI Virtual Try-On Studio
           </h1>
           <p className="text-sm text-stone-600 mt-1 max-w-2xl">
-            See yourself in any garment from your wardrobe or an uploaded clothing item using dedicated neural try-on.
+            See yourself in any garment from your wardrobe or an uploaded clothing item using dedicated IDM-VTON neural diffusion.
           </p>
         </div>
 
-        {/* Model Status Badge */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {status?.idm_vton_configured && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>IDM-VTON Ready (ZeroGPU)</span>
+        {/* Real-time Truthful Service Status Indicator */}
+        <div className="flex items-center gap-2">
+          {checkingStatus ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-stone-100 border border-stone-200 text-xs text-stone-600">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-stone-500" />
+              <span>Verifying IDM-VTON service...</span>
             </div>
-          )}
-          {status?.gemini_configured && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-              <span>Gemini Ready</span>
+          ) : isGenerating ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
+              <span>Generating look...</span>
             </div>
-          )}
-          {status?.nvidia_configured && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200 text-xs text-stone-700 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5 text-stone-600" />
-              <span>NVIDIA Ready</span>
+          ) : status?.status === "available" ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Available (ZeroGPU)</span>
+            </div>
+          ) : status?.status === "quota_exceeded" ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <span>Quota Exceeded</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 font-medium">
+              <AlertCircle className="w-4 h-4 text-rose-600" />
+              <span>Service Unavailable</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Models Selector */}
-      <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-200 space-y-2.5">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-mono uppercase tracking-wider text-stone-600 font-medium flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            Select AI Try-On Engine
-          </label>
-          <span className="text-[11px] text-stone-400 font-mono">Dedicated VTON &amp; Multimodal AI</span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* IDM-VTON (Recommended) */}
-          <button
-            type="button"
-            onClick={() => setSelectedModel("idm-vton")}
-            className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
-              selectedModel === "idm-vton"
-                ? "bg-white border-emerald-600 shadow-xs ring-1 ring-emerald-600 font-semibold text-stone-950"
-                : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
-            }`}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-xs font-semibold text-stone-900 flex items-center gap-1.5">
-                IDM-VTON
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-medium font-mono">
-                Recommended
-              </span>
+      {/* Single Exclusive Engine Card: IDM-VTON */}
+      <div className="rounded-2xl border border-stone-200 bg-white p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-stone-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
+              <Shirt className="w-4 h-4" />
             </div>
-            <p className="text-[11px] text-stone-500 font-normal leading-relaxed">
-              Dedicated neural try-on (ECCV 2024). Warps sleeves, collar, drape, and seams naturally to your body posture.
-            </p>
-          </button>
-
-          {/* Gemini Flash Image */}
-          <button
-            type="button"
-            onClick={() => setSelectedModel("gemini-2.5-flash-image")}
-            className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
-              selectedModel === "gemini-2.5-flash-image"
-                ? "bg-white border-blue-600 shadow-xs ring-1 ring-blue-600 font-semibold text-stone-950"
-                : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
-            }`}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-xs font-semibold text-stone-900 flex items-center gap-1.5">
-                Google Gemini
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 font-medium font-mono">
-                Multimodal AI
-              </span>
-            </div>
-            <p className="text-[11px] text-stone-500 font-normal leading-relaxed">
-              Google AI Studio image generation API. (Requires active billing quota on Google Cloud project).
-            </p>
-          </button>
-
-          {/* Qwen-Image-Edit */}
-          <button
-            type="button"
-            onClick={() => setSelectedModel("qwen-image-edit")}
-            className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
-              selectedModel === "qwen-image-edit"
-                ? "bg-white border-stone-900 shadow-xs ring-1 ring-stone-900 font-semibold text-stone-950"
-                : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
-            }`}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-xs font-semibold text-stone-900 flex items-center gap-1.5">
-                Qwen-Image-Edit
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-200 text-stone-900 font-medium font-mono">
-                NVIDIA NIM
-              </span>
-            </div>
-            <p className="text-[11px] text-stone-500 font-normal leading-relaxed">
-              Alibaba Cloud image editing model. Dual-input try-on for local GPU NIM containers.
-            </p>
-          </button>
-
-          {/* Qwen-Image */}
-          <button
-            type="button"
-            onClick={() => setSelectedModel("qwen-image")}
-            className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
-              selectedModel === "qwen-image"
-                ? "bg-white border-stone-900 shadow-xs ring-1 ring-stone-900 font-semibold text-stone-950"
-                : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
-            }`}
-          >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-xs font-semibold text-stone-900 flex items-center gap-1.5">
-                Qwen-Image
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 font-medium font-mono">
-                Foundation
-              </span>
-            </div>
-            <p className="text-[11px] text-stone-500 font-normal leading-relaxed">
-              Diffusion-based foundation model with advanced multilingual rendering and compositional generation.
-            </p>
-          </button>
-        </div>
-      </div>
-
-      {/* NVIDIA NIM Setup / Endpoint Notice */}
-      {!status?.is_configured && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5 text-amber-950">
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
-            <div className="space-y-2 text-sm">
-              <div className="font-semibold text-amber-900">
-                Setup NVIDIA Qwen NIM Containers
+            <div>
+              <div className="text-xs font-semibold text-stone-900 flex items-center gap-2">
+                <span>IDM-VTON (ECCV 2024 Dedicated Diffusion)</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono font-medium">
+                  Exclusive Engine
+                </span>
               </div>
-              <p className="text-amber-800/90 leading-relaxed">
-                Qwen models are distributed as NVIDIA NIM containers (<code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">nvcr.io/nim/qwen/qwen-image-edit:latest</code> and <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">nvcr.io/nim/qwen/qwen-image:latest</code>).
-                To enable AI try-on, configure <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">NVIDIA_API_KEY</code> in <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">backend/.env</code>.
+              <span className="text-[11px] text-stone-500">
+                Endpoint: <code className="font-mono">{status?.endpoint || "yisol/IDM-VTON"}</code>
+              </span>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <span className="text-[11px] font-mono text-stone-500">
+              Hardware: {status?.hardware || "zero-a10g"} &bull; Stage: {status?.stage || "READY"}
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs text-stone-600 leading-relaxed">
+          IDM-VTON employs a dedicated GarmentNet and TryonNet dual diffusion architecture. It estimates 3D body pose, generates realistic fabric draping, wraps sleeves along forearm anatomy, and preserves 100% of your face, hair, and original background.
+        </p>
+
+        {status?.status === "quota_exceeded" && (
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold">Hugging Face ZeroGPU Daily Limit Reached</span>
+              <p className="text-amber-800 mt-0.5">
+                {status.detail || "Your current ZeroGPU quota has been consumed. Quota automatically refreshes throughout the day."}
               </p>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {status?.status === "unavailable" && (
+          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold">IDM-VTON Service Unreachable</span>
+              <p className="text-rose-800 mt-0.5">
+                {status.detail || "Please verify that your HF_TOKEN is configured in backend/.env."}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Studio Workspace Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -734,11 +656,7 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
                   {generatingStep || "AI Processing..."}
                 </div>
                 <p className="text-[11px] text-stone-500 max-w-[220px]">
-                  {selectedModel === "idm-vton"
-                    ? "IDM-VTON is calculating 3D body pose and realistic cloth drape."
-                    : selectedModel.startsWith("gemini")
-                    ? "Google Gemini is synthesizing image try-on."
-                    : "AI model is applying cloth simulation."}
+                  IDM-VTON is calculating 3D body pose and synthesizing authentic fabric drape.
                 </p>
               </div>
             ) : (

@@ -12,9 +12,7 @@ from app.models.user import User
 from app.models.garment import Garment
 from app.models.tryon import TryOnRecord
 from app.schemas.tryon import TryOnStatusResponse, TryOnResponse, TryOnHistoryResponse
-from app.services.nvidia_tryon import generate_virtual_tryon
-from app.services.gemini_tryon import call_gemini_image_edit
-from app.services.idm_vton import call_idm_vton
+from app.services.idm_vton import call_idm_vton, check_idm_vton_health
 
 logger = logging.getLogger(__name__)
 
@@ -23,26 +21,16 @@ router = APIRouter()
 
 @router.get("/status", response_model=TryOnStatusResponse)
 async def get_tryon_status():
-    """Returns availability and configuration state of Virtual Try-On services (IDM-VTON, Google Gemini, NVIDIA)."""
-    idm_ready = bool(settings.IDM_VTON_SPACE and settings.HF_TOKEN and settings.HF_TOKEN.strip())
-    nvidia_ready = bool(settings.NVIDIA_API_KEY and settings.NVIDIA_API_KEY.strip())
-    gemini_ready = bool(settings.GEMINI_API_KEY and settings.GEMINI_API_KEY.strip())
+    """Returns genuine real-time availability and ZeroGPU quota status for the dedicated IDM-VTON service."""
+    health_info = await check_idm_vton_health()
     return TryOnStatusResponse(
-        is_configured=idm_ready or nvidia_ready or gemini_ready,
-        model_name="IDM-VTON (ECCV 2024), Google Gemini & NVIDIA NIM",
-        endpoint=settings.IDM_VTON_SPACE,
-        available_models=[
-            "idm-vton",
-            "gemini-nano-banana-2.1",
-            "gemini-3.1-flash-image",
-            "gemini-3.1-flash-lite-image",
-            "gemini-2.5-flash-image",
-            "qwen-image-edit",
-            "qwen-image",
-        ],
-        idm_vton_configured=idm_ready,
-        gemini_configured=gemini_ready,
-        nvidia_configured=nvidia_ready,
+        is_configured=health_info.get("is_configured", False),
+        status=health_info.get("status", "unavailable"),
+        model_name=health_info.get("model_name", "IDM-VTON (ECCV 2024)"),
+        endpoint=health_info.get("endpoint", settings.IDM_VTON_SPACE),
+        detail=health_info.get("detail"),
+        stage=health_info.get("stage"),
+        hardware=health_info.get("hardware"),
     )
 
 
@@ -52,13 +40,13 @@ async def create_virtual_tryon(
     garment_image: Optional[UploadFile] = File(None, description="Clothing product photograph"),
     garment_id: Optional[int] = Form(None, description="ID of existing wardrobe item to try on"),
     prompt: Optional[str] = Form(None, description="Optional styling or draping instruction"),
-    model: Optional[str] = Form("idm-vton", description="Model engine to use (e.g. 'idm-vton', 'gemini-nano-banana-2.1', 'qwen-image-edit')"),
+    model: Optional[str] = Form("idm-vton", description="Try-on engine (IDM-VTON dedicated neural pipeline)"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Executes real AI Virtual Try-On using NVIDIA NIM Qwen or Google Gemini multimodal image generation.
-    Takes a person photo and either an uploaded garment image or an existing wardrobe garment ID.
+    Executes authentic AI Virtual Try-On using dedicated IDM-VTON neural diffusion pipeline.
+    Warps garments naturally along the human pose and anatomy without fake Pillow overlays.
     """
     if not garment_image and not garment_id:
         raise HTTPException(
@@ -121,28 +109,13 @@ async def create_virtual_tryon(
         subfolder="tryon/persons",
     )
 
-    # Call AI Virtual Try-On service based on selected model
-    selected_model = (model or "idm-vton").lower().strip()
-    if selected_model in ("idm-vton", "idm_vton", "default"):
-        generated_bytes = await call_idm_vton(
-            person_bytes=person_bytes,
-            garment_bytes=garment_bytes,
-            garment_description=prompt,
-        )
-    elif selected_model.startswith("gemini"):
-        generated_bytes = await call_gemini_image_edit(
-            person_bytes=person_bytes,
-            garment_bytes=garment_bytes,
-            custom_prompt=prompt,
-            model_name=selected_model,
-        )
-    else:
-        generated_bytes = await generate_virtual_tryon(
-            person_bytes=person_bytes,
-            garment_bytes=garment_bytes,
-            custom_prompt=prompt,
-            model=selected_model,
-        )
+    # Execute dedicated IDM-VTON virtual try-on
+    generated_bytes = await call_idm_vton(
+        person_bytes=person_bytes,
+        garment_bytes=garment_bytes,
+        garment_description=prompt,
+        timeout_seconds=settings.TRYON_TIMEOUT_SECONDS,
+    )
 
     # Save generated AI result image
     result_image_url = await storage_service.save_file(
