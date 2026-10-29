@@ -156,6 +156,20 @@ async def call_nvidia_qwen_image_edit(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="NVIDIA API authentication failed. Please verify that your NVIDIA_API_KEY in backend/.env is valid.",
         )
+    elif response.status_code == 404:
+        logger.error("NVIDIA endpoint 404 Not Found: %s", target_endpoint)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                f"NVIDIA endpoint returned 404 Not Found at '{target_endpoint}'. "
+                "Per NVIDIA's model catalog (build.nvidia.com/qwen/qwen-image-edit), "
+                "Qwen-Image-Edit is an NVIDIA NIM 'Run Anywhere' container (nvcr.io/nim/qwen/qwen-image-edit:latest). "
+                "NVIDIA does not host a shared public cloud endpoint for this model. "
+                "To use Qwen-Image-Edit, run the official NIM container on a GPU instance "
+                "(e.g. docker run -p 8080:8000 nvcr.io/nim/qwen/qwen-image-edit) "
+                "and set NVIDIA_TRYON_ENDPOINT=http://<host>:8080/v1/infer in backend/.env."
+            ),
+        )
     elif response.status_code == 429:
         logger.warning("NVIDIA API rate limit exceeded")
         raise HTTPException(
