@@ -83,6 +83,16 @@ class Settings(BaseSettings):
         description="Timeout in seconds for AI image generation requests",
     )
 
+    # Google Gemini Virtual Try-On (Gemini Multimodal Image Generation)
+    GEMINI_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Google AI Studio Gemini API Key for experimental virtual try-on (never expose to frontend)",
+    )
+    GEMINI_IMAGE_MODEL: str = Field(
+        default="gemini-2.5-flash-image",
+        description="Default Gemini image model (e.g. gemini-2.5-flash-image or gemini-3.1-flash-image)",
+    )
+
     @field_validator("PORT", mode="before")
     @classmethod
     def validate_port(cls, v: object) -> int:

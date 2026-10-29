@@ -106,6 +106,8 @@ export interface TryOnStatusResponse {
   model_name: string;
   endpoint: string;
   available_models?: string[];
+  gemini_configured?: boolean;
+  nvidia_configured?: boolean;
 }
 
 export interface TryOnRecord {

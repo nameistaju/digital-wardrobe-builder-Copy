@@ -60,8 +60,8 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
   const [garmentFile, setGarmentFile] = useState<File | null>(null);
   const [garmentPreview, setGarmentPreview] = useState<string | null>(null);
 
-  // Qwen Model Choice
-  const [selectedQwenModel, setSelectedQwenModel] = useState<"qwen-image-edit" | "qwen-image">("qwen-image-edit");
+  // Model Engine Choice
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-flash-image");
 
   const [customPrompt, setCustomPrompt] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -151,13 +151,20 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
 
     setError(null);
     setIsGenerating(true);
-    const modelName = selectedQwenModel === "qwen-image-edit" ? "Qwen-Image-Edit" : "Qwen-Image";
-    setGeneratingStep(`Preparing images for NVIDIA ${modelName}...`);
+    const modelName =
+      selectedModel === "gemini-2.5-flash-image"
+        ? "Google Gemini 2.5 Flash Image"
+        : selectedModel === "gemini-3.1-flash-image"
+        ? "Google Gemini 3.1 Flash Image"
+        : selectedModel === "qwen-image-edit"
+        ? "Qwen-Image-Edit"
+        : "Qwen-Image";
+    setGeneratingStep(`Preparing images for ${modelName}...`);
 
     try {
       const formData = new FormData();
       formData.append("person_image", personFile);
-      formData.append("model", selectedQwenModel);
+      formData.append("model", selectedModel);
 
       if (garmentMode === "upload" && garmentFile) {
         formData.append("garment_image", garmentFile);
@@ -169,7 +176,7 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
         formData.append("prompt", customPrompt.trim());
       }
 
-      setGeneratingStep(`Generating realistic try-on via NVIDIA ${modelName}...`);
+      setGeneratingStep(`Generating realistic try-on via ${modelName}...`);
 
       const record = await generateVirtualTryOn(formData);
       setCurrentResult(record);
@@ -213,7 +220,9 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
           <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-amber-50 text-amber-900 border border-amber-200 mb-2">
             <Sparkles className="w-3.5 h-3.5 text-amber-600" />
             <span>
-              {selectedQwenModel === "qwen-image-edit"
+              {selectedModel.startsWith("gemini")
+                ? "Google Gemini Multimodal AI"
+                : selectedModel === "qwen-image-edit"
                 ? "NVIDIA NIM: Qwen-Image-Edit"
                 : "NVIDIA NIM: Qwen-Image Foundation"}
             </span>
@@ -222,41 +231,66 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
             AI Virtual Try-On Studio
           </h1>
           <p className="text-sm text-stone-600 mt-1 max-w-2xl">
-            See yourself in any garment from your wardrobe or an uploaded clothing item using Alibaba Cloud &amp; NVIDIA Qwen AI models.
+            See yourself in any garment from your wardrobe or an uploaded clothing item using Google Gemini or NVIDIA Qwen AI models.
           </p>
         </div>
 
         {/* Model Status Badge */}
-        <div className="flex items-center gap-3">
-          {status?.is_configured ? (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>NVIDIA Qwen Key Active</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          {status?.gemini_configured && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800 font-medium">
+              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+              <span>Gemini Ready</span>
             </div>
-          ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-              <span>NVIDIA API Key Required</span>
+          )}
+          {status?.nvidia_configured && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>NVIDIA Ready</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Qwen Models Selector (Choose Between Two Qwen Models) */}
+      {/* Models Selector: Gemini & Qwen */}
       <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-200 space-y-2.5">
         <div className="flex items-center justify-between">
           <label className="text-xs font-mono uppercase tracking-wider text-stone-600 font-medium flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            Choose Qwen Model Engine
+            Select AI Try-On Engine
           </label>
-          <span className="text-[11px] text-stone-400 font-mono">2 Models Configured</span>
+          <span className="text-[11px] text-stone-400 font-mono">Google Gemini &amp; NVIDIA</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Gemini 2.5 Flash Image */}
           <button
             type="button"
-            onClick={() => setSelectedQwenModel("qwen-image-edit")}
+            onClick={() => setSelectedModel("gemini-2.5-flash-image")}
             className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
-              selectedQwenModel === "qwen-image-edit"
+              selectedModel === "gemini-2.5-flash-image"
+                ? "bg-white border-blue-600 shadow-xs ring-1 ring-blue-600 font-semibold text-stone-950"
+                : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
+            }`}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs font-semibold text-stone-900 flex items-center gap-1.5">
+                Google Gemini
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 font-medium font-mono">
+                Gemini 2.5
+              </span>
+            </div>
+            <p className="text-[11px] text-stone-500 font-normal leading-relaxed">
+              Google AI Studio image generation API. Accepts separate person and garment inputs with natural physical fitting.
+            </p>
+          </button>
+
+          {/* Qwen-Image-Edit */}
+          <button
+            type="button"
+            onClick={() => setSelectedModel("qwen-image-edit")}
+            className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+              selectedModel === "qwen-image-edit"
                 ? "bg-white border-stone-900 shadow-xs ring-1 ring-stone-900 font-semibold text-stone-950"
                 : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
             }`}
@@ -266,19 +300,20 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
                 Qwen-Image-Edit
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-medium font-mono">
-                Recommended
+                NVIDIA NIM
               </span>
             </div>
             <p className="text-[11px] text-stone-500 font-normal leading-relaxed">
-              Image-to-image foundation editing NIM. Performs contextual garment fitting, fabric drape, seams, and shadows directly onto your photo.
+              Alibaba Cloud image editing model. Dual-input try-on for realistic sleeves, collar, drape &amp; lighting.
             </p>
           </button>
 
+          {/* Qwen-Image */}
           <button
             type="button"
-            onClick={() => setSelectedQwenModel("qwen-image")}
+            onClick={() => setSelectedModel("qwen-image")}
             className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
-              selectedQwenModel === "qwen-image"
+              selectedModel === "qwen-image"
                 ? "bg-white border-stone-900 shadow-xs ring-1 ring-stone-900 font-semibold text-stone-950"
                 : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
             }`}
@@ -287,12 +322,12 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
               <span className="text-xs font-semibold text-stone-900 flex items-center gap-1.5">
                 Qwen-Image
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 font-medium font-mono">
-                New Foundation
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 font-medium font-mono">
+                Foundation
               </span>
             </div>
             <p className="text-[11px] text-stone-500 font-normal leading-relaxed">
-              Diffusion-based vision-language foundation model. Supports precise multilingual text rendering and multimodal visual synthesis.
+              Diffusion-based foundation model with advanced multilingual rendering and compositional generation.
             </p>
           </button>
         </div>

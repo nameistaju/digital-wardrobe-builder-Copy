@@ -7,7 +7,14 @@ class TryOnStatusResponse(BaseModel):
     is_configured: bool
     model_name: str
     endpoint: str
-    available_models: List[str] = ["qwen-image-edit", "qwen-image"]
+    available_models: List[str] = [
+        "qwen-image-edit",
+        "qwen-image",
+        "gemini-2.5-flash-image",
+        "gemini-3.1-flash-image",
+    ]
+    gemini_configured: bool = False
+    nvidia_configured: bool = False
 
 
 class TryOnResponse(BaseModel):

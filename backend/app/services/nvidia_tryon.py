@@ -1,119 +1,91 @@
 import base64
 import io
 import logging
-from typing import Optional, Tuple
+from typing import Optional
 from PIL import Image, ImageOps
 import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.services.ai_segmentation import remove_image_background
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TRYON_PROMPT = (
-    "High-fashion realistic virtual try-on: Fit the clothing garment naturally on the person. "
-    "Seamlessly integrate clothing drape, fabric texture, realistic wrinkles, seams, and natural shadows, "
-    "while preserving the person's exact face, identity, skin tone, hair, and body pose."
+# Explicit photorealistic garment replacement prompt per Phase 3G specifications
+EXPLICIT_TRYON_INSTRUCTION = (
+    "Perform a photorealistic clothing replacement edit. "
+    "Image 1 is the original photograph of the person. "
+    "Image 2 is the product reference for the garment that must be worn.\n\n"
+    "Replace the existing upper-body garment in Image 1 with the exact garment shown in Image 2. "
+    "The new garment must be physically worn on the person's body, following the person's torso, shoulders, arms, pose, and perspective.\n\n"
+    "Preserve the person's face, identity, hair, hands, body proportions, pose, trousers, accessories, lighting, and original background. "
+    "Preserve the reference garment's exact design, colors, patterns, logos, collar, sleeves, seams, and material as closely as possible.\n\n"
+    "Adapt the garment to the person's body. Generate realistic fabric folds, natural sleeve positioning, correct shoulder alignment, contact shadows, and consistent lighting.\n\n"
+    "The garment must NOT appear as a floating product image, rectangular patch, pasted cutout, separate panel, or object positioned in front of the person. "
+    "Do not reproduce the product photograph's background. Output one coherent, photorealistic photograph of the same person actually wearing the new garment."
 )
 
 DEFAULT_NEGATIVE_PROMPT = (
     "blurry, low quality, distorted, bad anatomy, deformed hands, extra limbs, "
     "floating clothes, cartoon, 3d render, plastic look, oversaturated, watermark, "
-    "rectangular borders, pasted box, frame"
+    "rectangular borders, pasted box, frame, sticker overlay, cut-and-paste artifact"
 )
 
 
-def _image_to_data_uri(img: Image.Image, format: str = "JPEG", quality: int = 90) -> str:
-    """Converts a PIL Image to a base64 data URI."""
-    buffered = io.BytesIO()
-    if img.mode in ("RGBA", "P"):
+def get_garment_type_guidance(garment_hint: Optional[str]) -> str:
+    """Adds specific physical drape, seam, and structural guidance based on garment category."""
+    if not garment_hint:
+        return "Garment category: Upper-body apparel. Fit collar to neck base, shoulder seams to acromion, and sleeves naturally along arm pose."
+    h = garment_hint.lower()
+    if any(k in h for k in ("hoodie", "sweatshirt", "sweater")):
+        return "Garment category: Long-sleeve hoodie/sweatshirt. Natural ribbed cuffs resting on wrists, soft fleece drape over shoulders and chest, natural waist hem."
+    if any(k in h for k in ("jacket", "coat", "blazer", "outerwear")):
+        return "Garment category: Structured jacket/outerwear. Crisp shoulder pads/seams, open or zipped lapels, structured torso drape, realistic sleeve bunching at elbow."
+    if any(k in h for k in ("t-shirt", "tee", "shirt", "top")):
+        return "Garment category: Casual shirt/T-shirt. Soft fabric drape conforming to chest contour, clean collar trim, sleeves ending cleanly at biceps or wrists."
+    if any(k in h for k in ("pant", "jean", "trouser", "bottom", "skirt")):
+        return "Garment category: Trousers/Bottoms. Waistband sitting at natural waist, leg seams running down along leg anatomy to ankle hem."
+    return "Garment category: Apparel. Physically fit to anatomy, following shoulders, arms, and torso contours."
+
+
+def image_bytes_to_data_uri(img_bytes: bytes, max_dimension: int = 1536) -> str:
+    """
+    Converts image bytes to base64 data URI while preserving original aspect ratio,
+    colors, and full resolution without cropping away torso, shoulders, arms, or background.
+    """
+    try:
+        img = Image.open(io.BytesIO(img_bytes))
+        img = ImageOps.exif_transpose(img)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid image file: {e}",
+        )
+
+    if img.mode != "RGB":
         img = img.convert("RGB")
-    img.save(buffered, format=format, quality=quality)
-    encoded = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    mime = "image/jpeg" if format.upper() == "JPEG" else "image/png"
-    return f"data:{mime};base64,{encoded}"
 
-
-def create_tryon_composite(
-    person_bytes: bytes,
-    garment_bytes: bytes,
-    target_height: int = 1024,
-) -> Tuple[bytes, str]:
-    """
-    Creates a standardized dual-panel reference canvas for image-edit models:
-    - Left panel: The person to be dressed.
-    - Right panel: The reference garment on clean white canvas with aligned proportions.
-    Returns composite image bytes and data URI.
-    """
-    try:
-        person_img = Image.open(io.BytesIO(person_bytes))
-        person_img = ImageOps.exif_transpose(person_img)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid person image file: {e}",
-        )
-
-    try:
-        garment_img = Image.open(io.BytesIO(garment_bytes))
-        garment_img = ImageOps.exif_transpose(garment_img)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid garment image file: {e}",
-        )
-
-    # Scale person to target height while maintaining aspect ratio
-    p_w, p_h = person_img.size
-    scale_p = target_height / max(p_h, 1)
-    new_p_w = max(1, int(p_w * scale_p))
-    new_p_h = target_height
-    resized_person = person_img.resize((new_p_w, new_p_h), Image.Resampling.LANCZOS)
-    if resized_person.mode != "RGB":
-        resized_person = resized_person.convert("RGB")
-
-    # Garment panel: clean square or proportional reference
-    garment_panel_width = max(512, new_p_w // 2)
-    garment_panel = Image.new("RGB", (garment_panel_width, target_height), (248, 248, 250))
-
-    g_w, g_h = garment_img.size
-    scale_g = min((garment_panel_width - 40) / max(g_w, 1), (target_height - 80) / max(g_h, 1))
-    new_g_w = max(1, int(g_w * scale_g))
-    new_g_h = max(1, int(g_h * scale_g))
-    resized_garment = garment_img.resize((new_g_w, new_g_h), Image.Resampling.LANCZOS)
-
-    # Paste garment centered in right panel
-    pos_x = (garment_panel_width - new_g_w) // 2
-    pos_y = (target_height - new_g_h) // 2
-    if resized_garment.mode == "RGBA":
-        garment_panel.paste(resized_garment, (pos_x, pos_y), resized_garment)
-    else:
-        garment_panel.paste(resized_garment, (pos_x, pos_y))
-
-    # Combine side-by-side into single composite canvas
-    total_width = new_p_w + garment_panel_width
-    composite = Image.new("RGB", (total_width, target_height), (255, 255, 255))
-    composite.paste(resized_person, (0, 0))
-    composite.paste(garment_panel, (new_p_w, 0))
+    w, h = img.size
+    if max(w, h) > max_dimension:
+        scale = max_dimension / max(w, h)
+        img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.Resampling.LANCZOS)
 
     buf = io.BytesIO()
-    composite.save(buf, format="JPEG", quality=92)
-    composite_bytes = buf.getvalue()
-    data_uri = _image_to_data_uri(composite, format="JPEG", quality=92)
-
-    return composite_bytes, data_uri
+    img.save(buf, format="JPEG", quality=95)
+    encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return f"data:image/jpeg;base64,{encoded}"
 
 
 async def call_nvidia_qwen_image_edit(
-    composite_data_uri: str,
+    person_data_uri: str,
+    garment_data_uri: str,
     prompt: str,
     api_key: str,
     endpoint: Optional[str] = None,
     timeout_seconds: Optional[int] = None,
 ) -> bytes:
     """
-    Calls NVIDIA NIM Qwen-Image-Edit API with formatted payload and returns decoded image bytes.
+    Calls NVIDIA NIM Qwen-Image-Edit API sending the person photo and garment photo as
+    separate discrete image inputs (not merged into a composite canvas or pasted with Pillow).
     """
     target_endpoint = endpoint or settings.NVIDIA_TRYON_ENDPOINT
     timeout = timeout_seconds or settings.NVIDIA_TRYON_TIMEOUT_SECONDS
@@ -124,16 +96,20 @@ async def call_nvidia_qwen_image_edit(
         "Accept": "application/json",
     }
 
+    # Pass discrete image inputs per multimodal image-editing schemas:
+    # Image 1 (person), Image 2 (garment reference)
     payload = {
         "prompt": prompt,
-        "image": composite_data_uri,
+        "images": [person_data_uri, garment_data_uri],
+        "image": person_data_uri,
+        "reference_image": garment_data_uri,
         "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
         "cfg_scale": 4.5,
         "steps": 30,
         "seed": 42,
     }
 
-    logger.info("Sending virtual try-on request to NVIDIA NIM (%s)", target_endpoint)
+    logger.info("Sending genuine try-on request to NVIDIA NIM Qwen-Image-Edit (%s)", target_endpoint)
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -148,7 +124,7 @@ async def call_nvidia_qwen_image_edit(
         logger.error("Network error communicating with NVIDIA NIM: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Could not connect to NVIDIA NIM Virtual Try-On service: {exc}",
+            detail=f"Could not connect to NVIDIA NIM Virtual Try-On service at {target_endpoint}: {exc}",
         )
 
     # Handle status errors
@@ -167,7 +143,8 @@ async def call_nvidia_qwen_image_edit(
                 "Per NVIDIA's model catalog (build.nvidia.com/qwen/qwen-image-edit), "
                 "Qwen-Image-Edit is an NVIDIA NIM 'Run Anywhere' container (nvcr.io/nim/qwen/qwen-image-edit:latest). "
                 "NVIDIA does not host a shared public cloud endpoint for this model. "
-                "To use Qwen-Image-Edit, run the official NIM container on a GPU instance (e.g. docker run -p 8080:8000 nvcr.io/nim/qwen/qwen-image-edit) "
+                "To execute true neural virtual try-on, deploy the official NIM container on a GPU instance "
+                "(e.g. docker run --gpus all -p 8080:8000 nvcr.io/nim/qwen/qwen-image-edit) "
                 "and set NVIDIA_TRYON_ENDPOINT=http://<host>:8080/v1/infer in backend/.env."
             ),
         )
@@ -279,7 +256,14 @@ async def call_nvidia_qwen_image(
     elif response.status_code == 404:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"NVIDIA endpoint returned 404 Not Found at '{target_endpoint}'.",
+            detail=(
+                f"NVIDIA endpoint returned 404 Not Found at '{target_endpoint}'. "
+                "Per NVIDIA's model catalog (build.nvidia.com/qwen/qwen-image), "
+                "Qwen-Image is an NVIDIA NIM 'Run Anywhere' container (nvcr.io/nim/qwen/qwen-image:latest). "
+                "To use Qwen-Image, run the official NIM container on a GPU instance "
+                "(e.g. docker run --gpus all -p 8000:8000 nvcr.io/nim/qwen/qwen-image) "
+                "and set NVIDIA_QWEN_IMAGE_ENDPOINT=http://<host>:8000/v1/infer in backend/.env."
+            ),
         )
     elif response.status_code >= 400:
         raise HTTPException(
@@ -327,69 +311,22 @@ async def call_nvidia_qwen_image(
         )
 
 
-def synthesize_virtual_tryon_image(
-    person_bytes: bytes,
-    garment_bytes: bytes,
-    prompt: Optional[str] = None,
-) -> bytes:
-    """
-    Fallback synthesis when no GPU inference endpoint is reachable.
-    Removes the garment background cleanly using rembg and composites onto the torso.
-    """
-    person_img = Image.open(io.BytesIO(person_bytes))
-    person_img = ImageOps.exif_transpose(person_img).convert("RGBA")
-
-    try:
-        cutout_bytes = remove_image_background(garment_bytes)
-        garment_img = Image.open(io.BytesIO(cutout_bytes)).convert("RGBA")
-    except Exception:
-        garment_img = Image.open(io.BytesIO(garment_bytes)).convert("RGBA")
-
-    p_w, p_h = person_img.size
-    target_h = min(p_h, 1200)
-    target_w = max(1, int(p_w * (target_h / max(p_h, 1))))
-    resized_person = person_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
-
-    desired_garment_w = max(1, int(target_w * 0.58))
-    g_w, g_h = garment_img.size
-    aspect_g = g_h / max(g_w, 1)
-    desired_garment_h = max(1, int(desired_garment_w * aspect_g))
-
-    if desired_garment_h > int(target_h * 0.60):
-        desired_garment_h = int(target_h * 0.60)
-        desired_garment_w = max(1, int(desired_garment_h / aspect_g))
-
-    resized_garment = garment_img.resize((desired_garment_w, desired_garment_h), Image.Resampling.LANCZOS)
-
-    pos_x = (target_w - desired_garment_w) // 2
-    pos_y = int(target_h * 0.22)
-
-    shadow = Image.new("RGBA", (desired_garment_w, desired_garment_h), (0, 0, 0, 0))
-    alpha = resized_garment.split()[3]
-    soft_alpha = alpha.point(lambda p: int(p * 0.25))
-    shadow.paste((30, 30, 35, 60), (0, 0), mask=soft_alpha)
-
-    canvas = resized_person.copy()
-    canvas.alpha_composite(shadow, (pos_x + 3, pos_y + 4))
-    canvas.alpha_composite(resized_garment, (pos_x, pos_y))
-
-    final_output = canvas.convert("RGB")
-    buf = io.BytesIO()
-    final_output.save(buf, format="JPEG", quality=92)
-    return buf.getvalue()
-
-
 async def generate_virtual_tryon(
     person_bytes: bytes,
     garment_bytes: bytes,
     custom_prompt: Optional[str] = None,
     model: Optional[str] = "qwen-image-edit",
+    garment_hint: Optional[str] = None,
 ) -> bytes:
     """
-    End-to-end execution of AI Virtual Try-On using NVIDIA Qwen NIM models:
-    - 'qwen-image-edit': Dedicated image-to-image editing NIM for try-on composition.
-    - 'qwen-image': Foundation text-and-image generation NIM.
-    Requires NVIDIA_API_KEY to be configured in backend/.env.
+    End-to-end execution of genuine AI Virtual Try-On using NVIDIA Qwen NIM models:
+    - 'qwen-image-edit': Dedicated image-to-image editing NIM with separate person & garment inputs.
+    - 'qwen-image': Foundation multimodal generation NIM.
+
+    Strict rules:
+    - No Pillow compositing, sticker pasting, or fake 2D canvas overlays.
+    - Person photo and garment photo are passed as separate, full-resolution discrete inputs.
+    - If the neural NIM container is offline, honest technical details are returned.
     """
     api_key = settings.NVIDIA_API_KEY
     if not api_key or not api_key.strip():
@@ -399,42 +336,34 @@ async def generate_virtual_tryon(
         )
 
     selected_model = (model or "qwen-image-edit").lower().strip()
+    type_guidance = get_garment_type_guidance(garment_hint)
 
     if selected_model == "qwen-image":
         effective_prompt = (
-            f"Photorealistic fashion portrait of a person trying on a stylish outfit: "
-            f"{custom_prompt.strip() if custom_prompt else DEFAULT_TRYON_PROMPT}. "
-            f"Ultra high quality, 8k, natural lighting, full body shot."
+            f"Photorealistic fashion portrait: A person physically wearing the specified garment. "
+            f"{type_guidance} "
+            f"{custom_prompt.strip() if custom_prompt else ''} "
+            f"Natural fabric drape, realistic shadows, full-body studio lighting, 8k photographic quality."
         )
-        try:
-            return await call_nvidia_qwen_image(
-                prompt=effective_prompt,
-                api_key=api_key,
-                endpoint=settings.NVIDIA_QWEN_IMAGE_ENDPOINT,
-            )
-        except HTTPException as exc:
-            if exc.status_code in (502, 504) and ("404" in str(exc.detail) or "Could not connect" in str(exc.detail)):
-                logger.info("NVIDIA Qwen-Image NIM endpoint offline (%s). Using studio try-on preview.", exc.detail[:80])
-                return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
-            raise exc
-
-    # Default: qwen-image-edit
-    _, composite_data_uri = create_tryon_composite(person_bytes, garment_bytes)
-    effective_prompt = (
-        f"Virtual Try-On: The person on the left must wear the clothing item shown on the right. "
-        f"{custom_prompt.strip() if custom_prompt else DEFAULT_TRYON_PROMPT} "
-        f"Remove the reference panel completely. Fit the garment naturally to the torso and arms."
-    )
-
-    try:
-        return await call_nvidia_qwen_image_edit(
-            composite_data_uri=composite_data_uri,
+        return await call_nvidia_qwen_image(
             prompt=effective_prompt,
             api_key=api_key,
-            endpoint=settings.NVIDIA_TRYON_ENDPOINT,
+            endpoint=settings.NVIDIA_QWEN_IMAGE_ENDPOINT,
         )
-    except HTTPException as exc:
-        if exc.status_code in (502, 504) and ("404" in str(exc.detail) or "Could not connect" in str(exc.detail)):
-            logger.info("NVIDIA Qwen-Image-Edit NIM endpoint offline (%s). Using studio try-on preview.", exc.detail[:80])
-            return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
-        raise exc
+
+    # Default: qwen-image-edit
+    # Convert person and garment into discrete, full-resolution data URIs (separate inputs)
+    person_data_uri = image_bytes_to_data_uri(person_bytes)
+    garment_data_uri = image_bytes_to_data_uri(garment_bytes)
+
+    # Build prompt incorporating Phase 3G explicit replacement instruction + garment guidance
+    custom_styling = f"\nStyling instructions: {custom_prompt.strip()}" if custom_prompt and custom_prompt.strip() else ""
+    effective_prompt = f"{EXPLICIT_TRYON_INSTRUCTION}\n\n{type_guidance}{custom_styling}"
+
+    return await call_nvidia_qwen_image_edit(
+        person_data_uri=person_data_uri,
+        garment_data_uri=garment_data_uri,
+        prompt=effective_prompt,
+        api_key=api_key,
+        endpoint=settings.NVIDIA_TRYON_ENDPOINT,
+    )

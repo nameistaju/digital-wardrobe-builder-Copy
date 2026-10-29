@@ -36,7 +36,8 @@ def test_tryon_status():
     assert "is_configured" in data
     assert "model_name" in data
     assert "endpoint" in data
-    assert "NVIDIA" in data["model_name"]
+    assert "available_models" in data
+    assert "gemini-2.5-flash-image" in data["available_models"]
     assert len(data["model_name"]) > 0
 
 
@@ -66,9 +67,29 @@ def test_tryon_missing_api_key():
                 "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
                 "garment_image": ("garment.jpg", io.BytesIO(garment_img), "image/jpeg"),
             },
+            data={"model": "qwen-image-edit"},
         )
         assert res.status_code == 503
         assert "NVIDIA_API_KEY is not configured" in res.json()["detail"]
+
+
+def test_tryon_missing_gemini_api_key():
+    token = get_auth_token("no_gemini_key")
+    person_img = create_test_image_bytes()
+    garment_img = create_test_image_bytes((50, 150, 50))
+
+    with patch.object(settings, "GEMINI_API_KEY", None):
+        res = client.post(
+            "/api/v1/try-on/generate",
+            headers={"Authorization": f"Bearer {token}"},
+            files={
+                "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
+                "garment_image": ("garment.jpg", io.BytesIO(garment_img), "image/jpeg"),
+            },
+            data={"model": "gemini-2.5-flash-image"},
+        )
+        assert res.status_code == 503
+        assert "GEMINI_API_KEY is not configured" in res.json()["detail"]
 
 
 def test_tryon_successful_generation_qwen():
@@ -131,6 +152,30 @@ def test_tryon_successful_generation_qwen_image_model():
             data = res.json()
             assert data["id"] > 0
             assert data["status"] == "completed"
+
+
+def test_tryon_successful_generation_gemini():
+    token = get_auth_token("success_gemini")
+    person_img = create_test_image_bytes((130, 120, 190))
+    garment_img = create_test_image_bytes((230, 80, 50))
+    mock_result_bytes = create_test_image_bytes((80, 180, 100))
+
+    with patch("app.api.v1.tryon.call_gemini_image_edit", return_value=mock_result_bytes):
+        res = client.post(
+            "/api/v1/try-on/generate",
+            headers={"Authorization": f"Bearer {token}"},
+            files={
+                "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
+                "garment_image": ("jacket.jpg", io.BytesIO(garment_img), "image/jpeg"),
+            },
+            data={"prompt": "Fit shirt naturally", "model": "gemini-2.5-flash-image"},
+        )
+
+        assert res.status_code == 201
+        data = res.json()
+        assert data["id"] > 0
+        assert data["status"] == "completed"
+        assert "tryon/results" in data["result_image_url"]
 
 
 def test_tryon_with_existing_wardrobe_garment():

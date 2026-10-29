@@ -13,6 +13,7 @@ from app.models.garment import Garment
 from app.models.tryon import TryOnRecord
 from app.schemas.tryon import TryOnStatusResponse, TryOnResponse, TryOnHistoryResponse
 from app.services.nvidia_tryon import generate_virtual_tryon
+from app.services.gemini_tryon import call_gemini_image_edit
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +22,21 @@ router = APIRouter()
 
 @router.get("/status", response_model=TryOnStatusResponse)
 async def get_tryon_status():
-    """Returns availability and configuration state of the NVIDIA Qwen Virtual Try-On services."""
-    is_ready = bool(settings.NVIDIA_API_KEY and settings.NVIDIA_API_KEY.strip())
+    """Returns availability and configuration state of Virtual Try-On services (NVIDIA & Google Gemini)."""
+    nvidia_ready = bool(settings.NVIDIA_API_KEY and settings.NVIDIA_API_KEY.strip())
+    gemini_ready = bool(settings.GEMINI_API_KEY and settings.GEMINI_API_KEY.strip())
     return TryOnStatusResponse(
-        is_configured=is_ready,
-        model_name="NVIDIA NIM Qwen",
+        is_configured=nvidia_ready or gemini_ready,
+        model_name="NVIDIA Qwen NIM & Google Gemini",
         endpoint=settings.NVIDIA_TRYON_ENDPOINT,
-        available_models=["qwen-image-edit", "qwen-image"],
+        available_models=[
+            "qwen-image-edit",
+            "qwen-image",
+            "gemini-2.5-flash-image",
+            "gemini-3.1-flash-image",
+        ],
+        gemini_configured=gemini_ready,
+        nvidia_configured=nvidia_ready,
     )
 
 
@@ -37,12 +46,12 @@ async def create_virtual_tryon(
     garment_image: Optional[UploadFile] = File(None, description="Clothing product photograph"),
     garment_id: Optional[int] = Form(None, description="ID of existing wardrobe item to try on"),
     prompt: Optional[str] = Form(None, description="Optional styling or draping instruction"),
-    model: Optional[str] = Form("qwen-image-edit", description="Qwen model to use ('qwen-image-edit' or 'qwen-image')"),
+    model: Optional[str] = Form("qwen-image-edit", description="Model engine to use (e.g. 'qwen-image-edit', 'qwen-image', 'gemini-2.5-flash-image')"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Executes real AI Virtual Try-On using NVIDIA NIM Qwen models (Qwen-Image-Edit or Qwen-Image).
+    Executes real AI Virtual Try-On using NVIDIA NIM Qwen or Google Gemini multimodal image generation.
     Takes a person photo and either an uploaded garment image or an existing wardrobe garment ID.
     """
     if not garment_image and not garment_id:
@@ -106,13 +115,21 @@ async def create_virtual_tryon(
         subfolder="tryon/persons",
     )
 
-    # Call AI Virtual Try-On service
-    generated_bytes = await generate_virtual_tryon(
-        person_bytes=person_bytes,
-        garment_bytes=garment_bytes,
-        custom_prompt=prompt,
-        model=model,
-    )
+    # Call AI Virtual Try-On service based on selected model
+    if model and model.lower().startswith("gemini"):
+        generated_bytes = await call_gemini_image_edit(
+            person_bytes=person_bytes,
+            garment_bytes=garment_bytes,
+            custom_prompt=prompt,
+            model_name=model,
+        )
+    else:
+        generated_bytes = await generate_virtual_tryon(
+            person_bytes=person_bytes,
+            garment_bytes=garment_bytes,
+            custom_prompt=prompt,
+            model=model,
+        )
 
     # Save generated AI result image
     result_image_url = await storage_service.save_file(
