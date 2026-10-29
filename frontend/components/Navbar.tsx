@@ -7,8 +7,8 @@ import { User, removeAuthToken } from "@/lib/api";
 
 interface NavbarProps {
   currentUser: User | null;
-  activeView: "wardrobe" | "outfits";
-  onSelectView: (view: "wardrobe" | "outfits") => void;
+  activeView: "wardrobe" | "outfits" | "tryon";
+  onSelectView: (view: "wardrobe" | "outfits" | "tryon") => void;
   onOpenUpload: () => void;
   onOpenAuth: () => void;
   onLogout: () => void;
@@ -72,6 +72,18 @@ export function Navbar({
               >
                 <Palette className="w-4 h-4" />
                 <span>Outfit Studio</span>
+              </button>
+
+              <button
+                onClick={() => onSelectView("tryon")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                  activeView === "tryon"
+                    ? "bg-amber-100/80 text-amber-950 font-semibold border border-amber-200/60"
+                    : "text-stone-600 hover:text-amber-800"
+                }`}
+              >
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span>Virtual Try-On</span>
               </button>
             </nav>
 
@@ -155,6 +167,19 @@ export function Navbar({
             >
               <Palette className="w-4 h-4" />
               <span>Outfit Studio</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onSelectView("tryon");
+                setMobileMenuOpen(false);
+              }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md text-left ${
+                activeView === "tryon" ? "bg-amber-100 text-amber-950 font-semibold" : ""
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span>Virtual Try-On</span>
             </button>
           </div>
 

@@ -33,8 +33,14 @@ This project supports **zero-setup local development** (Windows PowerShell, SQLi
 ## 2. AI Processing Audit & Disclosures
 
 To maintain absolute technical honesty:
-1. **Background Removal**: Uses `rembg` (U2Net neural network) when installed. In lightweight CPU environments without `rembg`, it falls back seamlessly to deterministic Pillow-based corner-sampling luminance/contour alpha isolation.
-2. **Garment Extraction from Full-Body Photos**:
+1. **AI Virtual Try-On (NVIDIA Qwen-Image-Edit NIM)**:
+   - Real, photorealistic AI image generation using NVIDIA NIM's `qwen/qwen-image-edit` model.
+   - Accepts a real photograph of a person and a separate clothing garment (either uploaded or chosen directly from your digital wardrobe).
+   - Backend safely proxies requests via `NVIDIA_API_KEY` (never leaked to frontend).
+   - Generates photorealistic draping, texture synthesis, and shadows while preserving the person's face, hair, and body pose.
+   - Resulting high-resolution looks can be downloaded as PNG or saved into outfits.
+2. **Background Removal**: Uses `rembg` (U2Net neural network) when installed. In lightweight CPU environments without `rembg`, it falls back seamlessly to deterministic Pillow-based corner-sampling luminance/contour alpha isolation.
+3. **Garment Extraction from Full-Body Photos**:
    - The active CPU engine is `HeuristicAnatomicalParser`. It segments full-body photographs according to fashion anatomical proportions (tops: chest/torso, bottoms: hips/ankles, shoes: feet/heels) followed by alpha background isolation to produce candidate cutouts.
    - For genuine deep-learning human parsing models (SCHP / LIP dataset), a modular `SCHPSegmentationEngine` is integrated in `backend/app/services/ai_segmentation.py`. When an ONNX checkpoint (`schp_lip.onnx`) is mounted into `ai-worker/checkpoints/`, tensor inference activates without code changes.
 
@@ -89,6 +95,8 @@ npm run dev -- --port 3000
 | `R2_ACCESS_KEY_ID` | If R2 | None | Cloudflare R2 API token Access Key ID. |
 | `R2_SECRET_ACCESS_KEY` | If R2 | None | Cloudflare R2 API token Secret Access Key. |
 | `R2_ENDPOINT_URL` | Optional | Constructed from Account ID | Explicit S3 API endpoint if custom domain is used. |
+| `NVIDIA_API_KEY` | Optional (Try-On) | None | Free NVIDIA NIM API key for Qwen-Image-Edit (never exposed to client). |
+| `NVIDIA_TRYON_ENDPOINT` | Optional | `https://integrate.api.nvidia.com/v1/genai/qwen/qwen-image-edit` | NVIDIA NIM endpoint URL for Qwen-Image-Edit. |
 
 ### Frontend (`frontend/.env.local` or Vercel Dashboard)
 
@@ -194,3 +202,20 @@ All user records, garment assets, and saved outfit configurations are preserved 
 ### 3. Images Return 404 in Production
 - **Cause**: The application is still configured with `STORAGE_PROVIDER=local` on Render. Ephemeral container filesystems on Render do not persist between restarts.
 - **Solution**: Set `STORAGE_PROVIDER=r2` in Render environment variables with valid Cloudflare R2 credentials.
+
+---
+
+## 9. AI Virtual Try-On Setup (NVIDIA Qwen-Image-Edit)
+
+The Virtual Try-On Studio connects directly to NVIDIA NIM's official `qwen/qwen-image-edit` foundation model.
+
+### How to Activate Real AI Virtual Try-On:
+1. Visit the NVIDIA Build model page: [https://build.nvidia.com/qwen/qwen-image-edit](https://build.nvidia.com/qwen/qwen-image-edit).
+2. Sign in with your free NVIDIA Developer account and click **Get API Key**.
+3. In `backend/.env` (or Render Dashboard for production), configure:
+   ```env
+   NVIDIA_API_KEY=nvapi-your-key-here
+   ```
+4. Start the app and navigate to the **Virtual Try-On** studio in the navigation bar.
+5. Upload a photo of yourself (or torso), choose a garment from your wardrobe or upload a new product photo, and click **Generate Real AI Try-On**.
+6. The photorealistic generated look will appear in the showcase for instant high-resolution PNG download!

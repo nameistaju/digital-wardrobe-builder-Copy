@@ -23,6 +23,7 @@ interface WardrobeCatalogProps {
   onGarmentDeleted: (id: number) => void;
   onOpenUpload: () => void;
   onAddToOutfit?: (garment: Garment) => void;
+  onTryOnGarment?: (garment: Garment) => void;
 }
 
 export function WardrobeCatalog({
@@ -31,6 +32,7 @@ export function WardrobeCatalog({
   onGarmentDeleted,
   onOpenUpload,
   onAddToOutfit,
+  onTryOnGarment,
 }: WardrobeCatalogProps) {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedSeason, setSelectedSeason] = useState("all");
@@ -227,6 +229,18 @@ export function WardrobeCatalog({
 
               {/* Card Actions */}
               <div className="mt-3 pt-2 border-t border-stone-100 flex items-center justify-between gap-1">
+                {onTryOnGarment && (
+                  <button
+                    type="button"
+                    onClick={() => onTryOnGarment(garment)}
+                    className="flex-1 inline-flex items-center justify-center gap-1 py-1 px-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/60 text-[11px] font-medium transition-colors"
+                    title="Try on this garment with AI"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-500" />
+                    <span>Try On</span>
+                  </button>
+                )}
+
                 {onAddToOutfit && (
                   <button
                     type="button"

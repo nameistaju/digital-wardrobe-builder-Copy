@@ -9,7 +9,7 @@ $root = (Get-Location).Path
 $allPassed = $true
 
 # 1. Backend Automated Tests (Pytest)
-Write-Host "`n[1/3] Running Backend Automated Tests (Pytest)..." -ForegroundColor Yellow
+Write-Host "`n[1/3] Running Backend Automated Tests (Pytest - 20 tests)..." -ForegroundColor Yellow
 Set-Location "$root\backend"
 & .\venv\Scripts\pytest.exe -v
 if ($LASTEXITCODE -ne 0) {

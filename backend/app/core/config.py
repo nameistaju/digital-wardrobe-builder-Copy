@@ -65,6 +65,20 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = Field(default="digital-wardrobe-assets", description="Cloudflare R2 Bucket Name")
     R2_ENDPOINT_URL: Optional[str] = Field(default=None, description="Direct R2 S3 API Endpoint URL")
 
+    # NVIDIA NIM Virtual Try-On (Qwen-Image-Edit)
+    NVIDIA_API_KEY: Optional[str] = Field(
+        default=None,
+        description="NVIDIA API Key for Qwen-Image-Edit virtual try-on (never expose to frontend)",
+    )
+    NVIDIA_TRYON_ENDPOINT: str = Field(
+        default="https://integrate.api.nvidia.com/v1/genai/qwen/qwen-image-edit",
+        description="NVIDIA NIM endpoint for Qwen-Image-Edit",
+    )
+    NVIDIA_TRYON_TIMEOUT_SECONDS: int = Field(
+        default=120,
+        description="Timeout in seconds for AI image generation requests",
+    )
+
     @field_validator("PORT", mode="before")
     @classmethod
     def validate_port(cls, v: object) -> int:

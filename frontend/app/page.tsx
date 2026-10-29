@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { EmptyState } from "@/components/EmptyState";
 import { WardrobeCatalog } from "@/components/WardrobeCatalog";
 import { OutfitBuilder } from "@/components/OutfitBuilder";
+import { TryOnStudio } from "@/components/TryOnStudio";
 import { UploadModal } from "@/components/UploadModal";
 import { AuthModal } from "@/components/AuthModal";
 import { Footer } from "@/components/Footer";
@@ -21,7 +22,8 @@ import {
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [garments, setGarments] = useState<Garment[]>([]);
-  const [activeView, setActiveView] = useState<"wardrobe" | "outfits">("wardrobe");
+  const [activeView, setActiveView] = useState<"wardrobe" | "outfits" | "tryon">("wardrobe");
+  const [selectedTryOnGarment, setSelectedTryOnGarment] = useState<Garment | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLoadingGarments, setIsLoadingGarments] = useState(true);
@@ -129,10 +131,14 @@ export default function HomePage() {
                 onAddToOutfit={(garment) => {
                   setActiveView("outfits");
                 }}
+                onTryOnGarment={(garment) => {
+                  setSelectedTryOnGarment(garment);
+                  setActiveView("tryon");
+                }}
               />
             </div>
           )
-        ) : (
+        ) : activeView === "outfits" ? (
           <div className="space-y-6">
             <div className="pb-4 border-b border-stone-200">
               <span className="text-xs font-mono uppercase tracking-widest text-stone-500">
@@ -145,6 +151,12 @@ export default function HomePage() {
 
             <OutfitBuilder garments={garments} />
           </div>
+        ) : (
+          <TryOnStudio
+            garments={garments}
+            initialSelectedGarment={selectedTryOnGarment}
+            onOpenUpload={() => setIsUploadModalOpen(true)}
+          />
         )}
       </main>
 

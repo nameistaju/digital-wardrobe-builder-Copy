@@ -22,3 +22,4 @@ class User(Base):
     garments = relationship("Garment", back_populates="user", cascade="all, delete-orphan")
     outfits = relationship("Outfit", back_populates="user", cascade="all, delete-orphan")
     extractions = relationship("ExtractionJob", back_populates="user", cascade="all, delete-orphan")
+    tryon_records = relationship("TryOnRecord", back_populates="user", cascade="all, delete-orphan")

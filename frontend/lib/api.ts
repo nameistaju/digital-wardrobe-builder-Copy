@@ -99,6 +99,28 @@ export interface HealthResponse {
   environment: string;
 }
 
+export interface TryOnStatusResponse {
+  is_configured: boolean;
+  model_name: string;
+  endpoint: string;
+}
+
+export interface TryOnRecord {
+  id: number;
+  result_image_url: string;
+  person_image_url: string;
+  garment_image_url: string;
+  garment_id?: number | null;
+  prompt?: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface TryOnHistoryResponse {
+  items: TryOnRecord[];
+  total: number;
+}
+
 export interface ApiHealthState {
   isHealthy: boolean;
   data: HealthResponse | null;
@@ -347,4 +369,20 @@ export async function deleteOutfit(outfitId: number): Promise<void> {
   return apiFetch<void>(`/api/v1/outfits/${outfitId}`, {
     method: "DELETE",
   });
+}
+
+// AI Virtual Try-On API (NVIDIA Qwen-Image-Edit)
+export async function getTryOnStatus(): Promise<TryOnStatusResponse> {
+  return apiFetch<TryOnStatusResponse>("/api/v1/try-on/status");
+}
+
+export async function generateVirtualTryOn(formData: FormData): Promise<TryOnRecord> {
+  return apiFetch<TryOnRecord>("/api/v1/try-on/generate", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function getTryOnHistory(limit: number = 20, offset: number = 0): Promise<TryOnHistoryResponse> {
+  return apiFetch<TryOnHistoryResponse>(`/api/v1/try-on/history?limit=${limit}&offset=${offset}`);
 }
