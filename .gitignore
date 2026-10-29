@@ -23,6 +23,8 @@ backend/.ruff_cache/
 backend/.coverage
 backend/htmlcov/
 backend/.env
+backend/*.db
+*.db
 *.py[cod]
 *$py.class
 

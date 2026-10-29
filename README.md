@@ -1,283 +1,134 @@
-# Digital Wardrobe Builder — Phase 1: Project Foundation
+# Digital Wardrobe Builder
 
-A production-minded, zero-budget Digital Wardrobe Builder designed to organize garments into a personal digital capsule, eventually leveraging AI vision models to isolate clothing items from full-body photographs.
-
-This repository represents **Phase 1: Project Setup, Application Foundation, and Local Development Environment**. Future phases will introduce database persistence, storage pipelines, segmentation models, and outfit composition.
+A production-minded, zero-budget Digital Wardrobe Builder that digitizes clothing items, leverages AI vision for background removal and garment extraction from full-body photos, catalogs garments with rich metadata, and provides an interactive Outfit Styling Studio with drag-and-drop layering and PNG image export.
 
 ---
 
-## 1. Architecture & Tech Stack
+## 1. Complete Architecture & Tech Stack
 
 | Layer | Technology | Version | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Frontend** | Next.js (App Router) | 16.x (React 19) | Modern, responsive fashion-tech web interface |
-| **Styling** | Tailwind CSS v4 & Lucide React | Latest | Off-white aesthetic, accessible controls, vector icons |
-| **Backend** | Python FastAPI | >= 0.115.0 | Async REST API, CORS configuration, health checks |
-| **Server** | Uvicorn (Standard) | >= 0.30.0 | High-performance ASGI web server |
-| **Testing** | Pytest & FastAPI TestClient (HTTPX) | Latest | Backend unit and integration test runner |
-| **Package Managers** | npm & Python pip (venv) | Latest | Zero-budget, open-source dependency management |
+| **Frontend** | Next.js (App Router), React, TypeScript | 16.4.3 (React 19) | Minimal fashion-tech UI, state management, interactive canvas |
+| **Styling** | Tailwind CSS v4, Lucide Icons | Latest | Responsive layout, warm off-white tones, accessible controls |
+| **Backend** | Python FastAPI & Uvicorn | >= 0.115.0 | Async REST API, CORS middleware, background worker tasks |
+| **Database & ORM** | SQLAlchemy 2.0 & Alembic | 2.0+ / 1.13+ | Async DB access, migrations, user isolation (SQLite / PostgreSQL) |
+| **Authentication** | JWT (python-jose) & bcrypt | Latest | Secure token-based auth, password hashing, demo guest mode |
+| **AI Segmentation** | Pillow & modular SCHP / rembg adapter | Latest | Zero-budget alpha isolation, human clothing anatomical parsing |
+| **Image Storage** | Local Storage Service Adapter | Standard | UUID-hashed secure storage with MIME validation & static serving |
+| **Testing** | Pytest, FastAPI TestClient, HTTPX | 9.x / Latest | 8 automated tests covering auth, garments, extraction & outfits |
 
 ---
 
-## 2. Project Directory Structure
+## 2. Directory Structure
 
 ```text
 digital-wardrobe/
-├── frontend/                     # Next.js App Router frontend application
-│   ├── app/                      # Layout, root page, and global styling
+├── frontend/
+│   ├── app/
 │   │   ├── favicon.ico
-│   │   ├── globals.css           # Warm off-white / stone color tokens
-│   │   ├── layout.tsx            # Metadata and root font wrappers
-│   │   └── page.tsx              # Landing shell & empty wardrobe view
-│   ├── components/               # Small, accessible UI components
-│   │   ├── BackendStatusBadge.tsx# Live API connection indicator
-│   │   ├── EmptyState.tsx        # Empty wardrobe prompt & CTA
-│   │   ├── Footer.tsx            # Minimalist footer
-│   │   ├── Navbar.tsx            # Brand header & navigation
-│   │   ├── UploadModal.tsx       # Ingestion options dialog (Esc-enabled)
-│   │   └── UploadOptionCards.tsx # Reusable Full Outfit vs. Item cards
+│   │   ├── globals.css           # Fashion-tech aesthetic variables
+│   │   ├── layout.tsx            # Metadata and fonts
+│   │   └── page.tsx              # Dynamic view: Wardrobe Catalog / Outfit Studio
+│   ├── components/
+│   │   ├── AuthModal.tsx         # Login, Register & Instant One-Click Demo Mode
+│   │   ├── BackendStatusBadge.tsx# Live API health monitor
+│   │   ├── EmptyState.tsx        # Empty wardrobe prompt & upload CTA
+│   │   ├── Footer.tsx            # Minimalist project footer
+│   │   ├── FullOutfitExtractionFlow.tsx # Asynchronous AI outfit segmentation & candidate review
+│   │   ├── IndividualUploadForm.tsx     # Single garment upload with background removal
+│   │   ├── Navbar.tsx            # Brand header, navigation & user profile
+│   │   ├── OutfitBuilder.tsx     # Drag-and-drop studio canvas, layering & PNG export
+│   │   ├── UploadModal.tsx       # Ingestion selector (Individual vs. Full Outfit)
+│   │   └── WardrobeCatalog.tsx   # Search, category pills, season filter, favorites, edit & delete
 │   ├── lib/
-│   │   └── api.ts                # Backend health fetcher utility
-│   ├── public/                   # Static assets
-│   ├── .env.example              # Frontend environment template
-│   ├── .env.local                # Local development variables (git-ignored)
-│   ├── Dockerfile                # Optional container configuration
-│   ├── package.json              # Frontend dependencies and scripts
+│   │   └── api.ts                # Type-safe API client for all backend endpoints
+│   ├── package.json
 │   └── tsconfig.json             # TypeScript strict configuration
-├── backend/                      # FastAPI backend application
+├── backend/
+│   ├── alembic/                  # Database migration versions
 │   ├── app/
 │   │   ├── api/
+│   │   │   ├── deps.py           # JWT Authentication dependency (get_current_user)
 │   │   │   └── v1/
-│   │   │       ├── health.py     # GET /api/v1/health status endpoint
-│   │   │       └── __init__.py   # Router mounting
+│   │   │       ├── auth.py       # Register, login, /me, demo guest mode
+│   │   │       ├── extraction.py # Asynchronous full-body AI garment extraction & review
+│   │   │       ├── garments.py   # Upload, list, filter, update, delete garments
+│   │   │       ├── health.py     # GET /api/v1/health
+│   │   │       └── outfits.py    # Save outfit layouts, list, update & delete
 │   │   ├── core/
-│   │   │   └── config.py         # Pydantic Settings & CORS validator
-│   │   ├── schemas/
-│   │   │   └── health.py         # HealthResponse schema
-│   │   └── main.py               # FastAPI entry point & CORS middleware
+│   │   │   ├── config.py         # Pydantic Settings & environment loader
+│   │   │   ├── database.py       # Async SQLAlchemy engine & session factory
+│   │   │   ├── security.py       # Password hashing & JWT generation
+│   │   │   └── storage.py        # Local storage adapter with traversal guards
+│   │   ├── models/               # SQLAlchemy DB models: User, Garment, Outfit, ExtractionJob
+│   │   ├── schemas/              # Pydantic request/response schemas
+│   │   ├── services/
+│   │   │   └── ai_segmentation.py# Background removal & full-body clothing segmentation
+│   │   └── main.py               # FastAPI entry point & lifespan DB initialization
 │   ├── tests/
-│   │   ├── test_health.py        # Automated health & CORS unit tests
-│   │   └── __init__.py
-│   ├── .env.example              # Backend environment template
-│   ├── .env                      # Local development variables (git-ignored)
-│   ├── Dockerfile                # Optional container configuration
-│   └── requirements.txt          # Python dependencies
-├── ai-worker/                    # Planned background AI segmentation worker
-│   └── README.md                 # Architecture roadmap (Phase 2+)
-├── storage/                      # Local asset storage directory (Phase 2+)
-│   └── .gitkeep
-├── .gitignore                    # Git ignore file for secrets and caches
-├── docker-compose.yml            # Optional container composition
-└── README.md                     # Comprehensive project documentation
+│   │   ├── conftest.py           # Pytest DB setup fixture
+│   │   ├── test_auth.py          # User registration, login & profile tests
+│   │   ├── test_extraction.py    # Full-body AI extraction & approval tests
+│   │   ├── test_garments.py      # Garment upload, filtering, CRUD & isolation tests
+│   │   ├── test_health.py        # Health endpoint & CORS tests
+│   │   └── test_outfits.py       # Outfit canvas persistence & retrieval tests
+│   ├── requirements.txt
+│   └── .env.example
+├── storage/                      # Image asset storage (garments, outfits, candidates)
+├── verify-all.ps1                # Single-command full-stack test verification script
+├── docker-compose.yml            # Container definitions
+└── README.md
 ```
 
 ---
 
-## 3. Prerequisites & Environment Check
+## 3. Quick Start (Windows PowerShell)
 
-Before getting started, ensure the following tools are installed on your Windows machine:
-
-- **Node.js**: `v20.x` or `v24.x` (LTS recommended)
-- **npm**: `v10.x` or `v11.x`
-- **Python**: `3.11` to `3.13`
-- **Git**: `2.x`
-
-### Verify Installations in Windows PowerShell
-
-Open Windows PowerShell and run:
-
+### Step 1: Run All Automated Verification Checks
+Verify that the entire system compiles and all 8 backend automated tests pass:
 ```powershell
-node -v
-npm -v
-python --version
-git --version
+powershell -ExecutionPolicy Bypass -File .\verify-all.ps1
 ```
 
-If any command is not recognized, install the missing software from their official websites:
-- Node.js: [https://nodejs.org/](https://nodejs.org/)
-- Python: [https://www.python.org/](https://www.python.org/) (ensure "Add Python to PATH" is checked during installation)
-- Git: [https://git-scm.com/](https://git-scm.com/)
-
----
-
-## 4. Setup & Installation (Windows PowerShell)
-
-Clone the repository and enter the project folder:
-
-```powershell
-git clone <repository-url>
-cd wodrobe
-```
-
-### 4.1 Backend Setup
-
-1. **Navigate to the backend directory**:
-   ```powershell
-   cd backend
-   ```
-
-2. **Create a Python virtual environment**:
-   ```powershell
-   python -m venv venv
-   ```
-
-3. **Activate the virtual environment**:
-   ```powershell
-   .\venv\Scripts\Activate.ps1
-   ```
-   > *Note on Execution Policies*: If PowerShell blocks script execution, run:
-   > `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
-
-4. **Install Python dependencies**:
-   ```powershell
-   python -m pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-5. **Configure environment variables**:
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-   Default values inside `backend/.env`:
-   ```env
-   APP_ENV=development
-   FRONTEND_ORIGIN=http://localhost:3000
-   HOST=127.0.0.1
-   PORT=8000
-   ```
-
-6. **Run backend tests**:
-   ```powershell
-   pytest
-   ```
-
----
-
-### 4.2 Frontend Setup
-
-1. **Open a second terminal and navigate to the frontend directory**:
-   ```powershell
-   cd frontend
-   ```
-
-2. **Install npm dependencies**:
-   ```powershell
-   npm install
-   ```
-
-3. **Configure environment variables**:
-   ```powershell
-   Copy-Item .env.example .env.local
-   ```
-   Default value inside `frontend/.env.local`:
-   ```env
-   NEXT_PUBLIC_API_URL=http://localhost:8000
-   ```
-
-4. **Verify TypeScript compilation**:
-   ```powershell
-   npm run build
-   ```
-
----
-
-## 5. Running the Application Locally
-
-Run the frontend and backend in separate terminal windows:
-
-### Terminal 1: Backend API (FastAPI)
-
+### Step 2: Start the Backend (Terminal 1)
 ```powershell
 cd backend
 .\venv\Scripts\Activate.ps1
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 - API Base URL: `http://127.0.0.1:8000`
-- API Health Status: [http://127.0.0.1:8000/api/v1/health](http://127.0.0.1:8000/api/v1/health)
-- Interactive API Docs (Swagger): [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- Interactive API Docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- Health Status: [http://127.0.0.1:8000/api/v1/health](http://127.0.0.1:8000/api/v1/health)
 
-### Terminal 2: Frontend Web App (Next.js)
-
+### Step 3: Start the Frontend (Terminal 2)
 ```powershell
 cd frontend
 npm run dev -- --port 3000
 ```
 - Web Application: [http://localhost:3000](http://localhost:3000)
 
-The frontend includes a live backend status badge that pings the FastAPI `/api/v1/health` endpoint and displays a green indicator with API version `v0.1.0`.
-
 ---
 
-## 6. Testing
+## 4. Feature Highlights
 
-### Run Backend Unit & Integration Tests
+### 1. Ingestion Pathways
+- **Individual Garment Upload**: Upload tops, bottoms, shoes, bags, or accessories with automated background removal, category assignment, colors, seasons, and notes.
+- **Full Outfit Photo (AI Extraction)**: Upload a full-body photograph. The async worker parses human clothing regions (tops, bottoms, footwear, accessories), performs transparent cutout extraction, and surfaces an interactive review interface to approve, edit, or reject candidate pieces into the wardrobe.
 
-From the `backend/` directory:
+### 2. Wardrobe Management
+- Instant category tabs with live counts (Tops, Bottoms, Outerwear, Shoes, Bags, Accessories, Dresses/Jumpsuits).
+- Live search across names, brands, colors, and style tags.
+- Season filter (Spring, Summer, Fall, Winter, All).
+- Favorites heart filter with instant state persistence.
+- In-place metadata editing and delete confirmations.
 
-```powershell
-cd backend
-.\venv\Scripts\pytest
-```
+### 3. Outfit Styling Studio
+- **Interactive Canvas**: Drag and drop clothing items freely, resize, reposition (x, y), and control layering order (Bring Forward, Send Backward, Bring to Front, Send to Back).
+- **Client-Side PNG Export**: High-resolution studio canvas render with transparent cutouts, warm studio backdrop, and timestamped look metadata downloaded instantly as PNG.
+- **Saved Outfits Persistence**: Save outfit layouts and load them back into the canvas at any time for restyling.
 
-Expected output:
-```text
-tests/test_health.py ... [100%]
-======================== 3 passed in 0.73s ========================
-```
-
-The test suite validates:
-1. `GET /api/v1/health` returns status HTTP 200 with JSON payload (`status`, `app`, `version`, `environment`).
-2. `GET /` root endpoint returns HTTP 200 with links to documentation and health check.
-3. CORS headers are returned properly for the configured `FRONTEND_ORIGIN`.
-
----
-
-## 7. Optional Docker Usage
-
-Docker is not mandatory for Phase 1. If you prefer containerized local development, you can start both services with:
-
-```powershell
-docker compose up --build
-```
-
----
-
-## 8. Troubleshooting Common Errors
-
-### 1. Port 8000 or 3000 Already in Use
-- Check which process is occupying the port:
-  ```powershell
-  Get-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess
-  ```
-- Change the port in `.env` (backend) or `.env.local` / `npm run dev -- -p 3001` (frontend).
-
-### 2. PowerShell Script Execution Disabled
-If running `.\venv\Scripts\Activate.ps1` produces `PSSecurityException`:
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\venv\Scripts\Activate.ps1
-```
-
-### 3. CORS Connection Errors in Frontend
-- Check `backend/.env`: verify `FRONTEND_ORIGIN` matches the exact URL of the frontend (e.g. `http://localhost:3000`).
-- Ensure no trailing slashes in origin configurations.
-- Verify that `NEXT_PUBLIC_API_URL` in `frontend/.env.local` points to `http://localhost:8000`.
-
-### 4. Deprecated or Missing Dependencies
-- If pip warns about outdated tools:
-  ```powershell
-  python -m pip install --upgrade pip
-  ```
-- If node packages need a clean reinstall:
-  ```powershell
-  cd frontend
-  Remove-Item -Recurse -Force node_modules
-  npm install
-  ```
-
----
-
-## 9. Roadmap to Phase 2
-
-- **Phase 1 (Completed)**: Project setup, Next.js dashboard shell, FastAPI modular structure, CORS, health endpoints, environment configuration, and verification tests.
-- **Phase 2 (Upcoming)**: Local storage pipeline, database schema (PostgreSQL), manual image upload endpoints, and background worker queue for AI garment segmentation.
+### 4. Zero-Budget Database Architecture
+- Uses **SQLAlchemy 2.0** with async connections.
+- Defaults out-of-the-box to **SQLite (`aiosqlite`)** for zero-setup local development without requiring external database servers or Docker.
+- Supports **PostgreSQL (`asyncpg`)** in production by simply changing `DATABASE_URL` in `.env`.
+- Database schema changes are managed cleanly via **Alembic migrations**.
