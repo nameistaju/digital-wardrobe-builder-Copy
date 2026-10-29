@@ -79,10 +79,14 @@ class Settings(BaseSettings):
         description="Timeout in seconds for AI image generation requests",
     )
 
-    # Virtual Try-On Engine: Supports dedicated VTON ('idm_vton') or NVIDIA NIM ('nvidia_nim')
+    # Virtual Try-On Engine: Supports 'fashn' (FASHN VTON v1.5), 'idm_vton' (IDM-VTON), or 'nvidia_nim' (Qwen-Image-Edit)
     TRYON_PROVIDER: str = Field(
-        default="idm_vton",
-        description="Try-on engine: 'idm_vton' (dedicated diffusion VTON) or 'nvidia_nim' (self-hosted NIM)",
+        default="fashn",
+        description="Try-on engine: 'fashn' (FASHN VTON v1.5), 'idm_vton' (IDM-VTON), or 'nvidia_nim' (NIM Qwen)",
+    )
+    FASHN_VTON_SPACE: str = Field(
+        default="fashn-ai/fashn-vton-1.5",
+        description="Official FASHN VTON v1.5 model space",
     )
     IDM_VTON_SPACE: str = Field(
         default="yisol/IDM-VTON",

@@ -24,18 +24,26 @@ async def get_tryon_status():
     """Returns availability and configuration state of the Virtual Try-On service."""
     provider = settings.TRYON_PROVIDER.lower().strip()
     is_ready = True
-    if provider == "nvidia_nim":
+    if provider in ("fashn", "fashn_vton"):
+        model_name = "FASHN VTON v1.5 (MMDiT Neural Try-On)"
+        endpoint = settings.FASHN_VTON_SPACE
+    elif provider == "idm_vton":
+        model_name = "IDM-VTON (ECCV 2024 Neural Try-On)"
+        endpoint = settings.IDM_VTON_SPACE
+    elif provider == "nvidia_nim":
         is_ready = bool(settings.NVIDIA_API_KEY and settings.NVIDIA_API_KEY.strip())
         model_name = "NVIDIA NIM Qwen-Image-Edit"
         endpoint = settings.NVIDIA_TRYON_ENDPOINT
     else:
-        model_name = "IDM-VTON (ECCV 2024 Neural Try-On)"
-        endpoint = settings.IDM_VTON_SPACE
+        model_name = f"Virtual Try-On ({provider})"
+        endpoint = "custom"
 
     return TryOnStatusResponse(
         is_configured=is_ready,
         model_name=model_name,
         endpoint=endpoint,
+        provider=provider,
+        supported_providers=["fashn", "idm_vton", "nvidia_nim"],
     )
 
 
@@ -45,11 +53,13 @@ async def create_virtual_tryon(
     garment_image: Optional[UploadFile] = File(None, description="Clothing product photograph"),
     garment_id: Optional[int] = Form(None, description="ID of existing wardrobe item to try on"),
     prompt: Optional[str] = Form(None, description="Optional styling or draping instruction"),
+    provider: Optional[str] = Form(None, description="Virtual Try-On provider ('fashn', 'idm_vton', 'nvidia_nim')"),
+    category: Optional[str] = Form(None, description="Garment category ('tops', 'bottoms', 'one-pieces')"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Executes real AI Virtual Try-On using NVIDIA Qwen-Image-Edit NIM.
+    Executes real AI Virtual Try-On using dedicated neural models (FASHN VTON 1.5, IDM-VTON, or NVIDIA NIM).
     Takes a person photo and either an uploaded garment image or an existing wardrobe garment ID.
     """
     if not garment_image and not garment_id:
@@ -70,6 +80,7 @@ async def create_virtual_tryon(
     # Resolve garment bytes and URL
     garment_bytes: bytes
     garment_image_url: str
+    target_category = category
 
     if garment_id is not None:
         result = await db.execute(
@@ -85,6 +96,8 @@ async def create_virtual_tryon(
                 detail=f"Wardrobe garment #{garment_id} not found.",
             )
         garment_image_url = garment.image_url
+        if not target_category and garment.category:
+            target_category = garment.category
         fetched_bytes = await storage_service.get_file_bytes(garment.image_url)
         if not fetched_bytes:
             raise HTTPException(
@@ -113,11 +126,13 @@ async def create_virtual_tryon(
         subfolder="tryon/persons",
     )
 
-    # Call NVIDIA AI Virtual Try-On service
+    # Call AI Virtual Try-On service
     generated_bytes = await generate_virtual_tryon(
         person_bytes=person_bytes,
         garment_bytes=garment_bytes,
         custom_prompt=prompt,
+        provider=provider,
+        category=target_category,
     )
 
     # Save generated AI result image

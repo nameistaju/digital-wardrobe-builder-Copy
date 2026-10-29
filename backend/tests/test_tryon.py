@@ -35,6 +35,9 @@ def test_tryon_status():
     data = res.json()
     assert "is_configured" in data
     assert "model_name" in data
+    assert "provider" in data
+    assert "supported_providers" in data
+    assert "fashn" in data["supported_providers"]
     assert len(data["model_name"]) > 0
 
 
@@ -65,18 +68,19 @@ def test_tryon_missing_api_key():
                     "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
                     "garment_image": ("garment.jpg", io.BytesIO(garment_img), "image/jpeg"),
                 },
+                data={"provider": "nvidia_nim"},
             )
             assert res.status_code == 503
             assert "NVIDIA_API_KEY is not configured" in res.json()["detail"]
 
 
-def test_tryon_successful_generation():
-    token = get_auth_token("success_user")
+def test_tryon_successful_generation_fashn():
+    token = get_auth_token("success_user_fashn")
     person_img = create_test_image_bytes((120, 150, 180))
     garment_img = create_test_image_bytes((220, 80, 50))
     mock_result_bytes = create_test_image_bytes((100, 200, 100))
 
-    with patch("app.services.nvidia_tryon.call_idm_vton", return_value=mock_result_bytes):
+    with patch("app.services.nvidia_tryon.call_fashn_vton", return_value=mock_result_bytes):
         res = client.post(
             "/api/v1/try-on/generate",
             headers={"Authorization": f"Bearer {token}"},
@@ -84,7 +88,7 @@ def test_tryon_successful_generation():
                 "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
                 "garment_image": ("dress.jpg", io.BytesIO(garment_img), "image/jpeg"),
             },
-            data={"prompt": "Realistic drape over shoulders"},
+            data={"prompt": "Realistic drape over shoulders", "category": "tops", "provider": "fashn"},
         )
 
         assert res.status_code == 201
@@ -121,11 +125,11 @@ def test_tryon_with_existing_wardrobe_garment():
     assert upload_res.status_code == 201
     garment_id = upload_res.json()["id"]
 
-    # 2. Call try-on referencing garment_id
+    # 2. Call try-on referencing garment_id with mock
     person_img = create_test_image_bytes()
     mock_result_bytes = create_test_image_bytes((60, 60, 180))
 
-    with patch("app.services.nvidia_tryon.call_idm_vton", return_value=mock_result_bytes):
+    with patch("app.services.nvidia_tryon.call_fashn_vton", return_value=mock_result_bytes):
         res = client.post(
             "/api/v1/try-on/generate",
             headers={"Authorization": f"Bearer {token}"},

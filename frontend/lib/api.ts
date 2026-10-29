@@ -103,6 +103,8 @@ export interface TryOnStatusResponse {
   is_configured: boolean;
   model_name: string;
   endpoint: string;
+  provider?: string;
+  supported_providers?: string[];
 }
 
 export interface TryOnRecord {

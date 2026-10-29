@@ -60,6 +60,10 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
   const [garmentFile, setGarmentFile] = useState<File | null>(null);
   const [garmentPreview, setGarmentPreview] = useState<string | null>(null);
 
+  // Model & Category selection
+  const [selectedProvider, setSelectedProvider] = useState<string>("fashn");
+  const [selectedCategory, setSelectedCategory] = useState<string>("tops");
+
   const [customPrompt, setCustomPrompt] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStep, setGeneratingStep] = useState<string>("");
@@ -90,6 +94,9 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
     try {
       const res = await getTryOnStatus();
       setStatus(res);
+      if (res?.provider) {
+        setSelectedProvider(res.provider);
+      }
     } catch (err) {
       console.error("Failed to fetch try-on status:", err);
     } finally {
@@ -148,11 +155,19 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
 
     setError(null);
     setIsGenerating(true);
-    setGeneratingStep("Compositing reference photos...");
+    const providerName =
+      selectedProvider === "fashn"
+        ? "FASHN VTON 1.5"
+        : selectedProvider === "idm_vton"
+        ? "IDM-VTON"
+        : "NVIDIA NIM";
+    setGeneratingStep(`Preparing images for ${providerName}...`);
 
     try {
       const formData = new FormData();
       formData.append("person_image", personFile);
+      formData.append("provider", selectedProvider);
+      formData.append("category", selectedCategory);
 
       if (garmentMode === "upload" && garmentFile) {
         formData.append("garment_image", garmentFile);
@@ -164,12 +179,7 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
         formData.append("prompt", customPrompt.trim());
       }
 
-      setGeneratingStep("Connecting to NVIDIA Qwen-Image-Edit NIM...");
-
-      // Update progress step after slight delay for visual smoothness
-      setTimeout(() => {
-        setGeneratingStep("Generating AI try-on with realistic draping & lighting...");
-      }, 1500);
+      setGeneratingStep(`Generating realistic try-on via ${providerName}...`);
 
       const record = await generateVirtualTryOn(formData);
       setCurrentResult(record);
@@ -178,7 +188,7 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
       console.error("Virtual Try-On error:", err);
       setError(
         err?.message ||
-          "Virtual Try-On generation failed. Ensure your NVIDIA_API_KEY is configured in backend/.env"
+          "Virtual Try-On generation failed. Please check your backend connection."
       );
     } finally {
       setIsGenerating(false);
@@ -212,7 +222,7 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
         <div>
           <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-amber-50 text-amber-900 border border-amber-200 mb-2">
             <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            <span>NVIDIA Qwen-Image-Edit NIM</span>
+            <span>{status?.model_name || "FASHN VTON v1.5 MMDiT"}</span>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-stone-950 font-serif">
             AI Virtual Try-On Studio
@@ -225,49 +235,85 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
 
         {/* Model Status Badge */}
         <div className="flex items-center gap-3">
-          {status?.is_configured ? (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>NVIDIA NIM Connected</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-              <span>API Key Required</span>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>AI Engine Online (₹0 Budget)</span>
+          </div>
         </div>
       </div>
 
-      {/* NVIDIA API Key Warning Banner if not configured */}
-      {!checkingStatus && status && !status.is_configured && (
+      {/* Engine & Category Controls */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-stone-50/80 p-4 rounded-2xl border border-stone-200">
+        {/* Model Engine Selector */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-mono uppercase tracking-wider text-stone-600 font-medium flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+            AI Try-On Engine
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: "fashn", name: "FASHN 1.5", badge: "Recommended" },
+              { id: "idm_vton", name: "IDM-VTON", badge: "ECCV '24" },
+              { id: "nvidia_nim", name: "Qwen NIM", badge: "Local/GPU" },
+            ].map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setSelectedProvider(p.id)}
+                className={`py-2 px-2.5 rounded-xl text-left border transition-all text-xs flex flex-col justify-between ${
+                  selectedProvider === p.id
+                    ? "bg-white border-stone-900 shadow-xs ring-1 ring-stone-900 font-semibold text-stone-950"
+                    : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
+                }`}
+              >
+                <span className="truncate">{p.name}</span>
+                <span className="text-[10px] text-stone-400 mt-0.5">{p.badge}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Garment Category Selector (Required by FASHN VTON 1.5) */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-mono uppercase tracking-wider text-stone-600 font-medium flex items-center gap-1.5">
+            <Sliders className="w-3.5 h-3.5 text-stone-600" />
+            Garment Category (FASHN VTON)
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: "tops", label: "Tops / Jackets" },
+              { id: "bottoms", label: "Pants / Skirts" },
+              { id: "one-pieces", label: "Dresses / Suits" },
+            ].map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setSelectedCategory(c.id)}
+                className={`py-2 px-2.5 rounded-xl text-center border transition-all text-xs font-medium ${
+                  selectedCategory === c.id
+                    ? "bg-white border-stone-900 shadow-xs ring-1 ring-stone-900 text-stone-950"
+                    : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Optional NVIDIA API Key Warning only if NVIDIA NIM is selected without key */}
+      {selectedProvider === "nvidia_nim" && !status?.is_configured && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5 text-amber-950">
           <div className="flex items-start gap-3">
             <Info className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
             <div className="space-y-2 text-sm">
               <div className="font-semibold text-amber-900">
-                Setup NVIDIA Qwen-Image-Edit API Key
+                Setup NVIDIA Qwen-Image-Edit NIM Container
               </div>
               <p className="text-amber-800/90 leading-relaxed">
-                To generate real AI Virtual Try-On images, set your free NVIDIA developer API key in{" "}
-                <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs text-amber-950">
-                  backend/.env
-                </code>{" "}
-                as:
-              </p>
-              <pre className="p-2.5 rounded-lg bg-amber-100/90 font-mono text-xs overflow-x-auto text-amber-950">
-                NVIDIA_API_KEY=nvapi-your-key-here
-              </pre>
-              <p className="text-xs text-amber-700">
-                Get your free trial API key from{" "}
-                <a
-                  href="https://build.nvidia.com/qwen/qwen-image-edit"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium underline hover:text-amber-950 inline-flex items-center gap-1"
-                >
-                  NVIDIA Build Qwen-Image-Edit <ExternalLink className="w-3 h-3" />
-                </a>
+                Qwen-Image-Edit is distributed as a self-hosted NIM container (<code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">nvcr.io/nim/qwen/qwen-image-edit:latest</code>).
+                When running locally without GPU, use the recommended <strong>FASHN VTON 1.5</strong> or <strong>IDM-VTON</strong> engines.
               </p>
             </div>
           </div>

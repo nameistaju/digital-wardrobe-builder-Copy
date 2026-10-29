@@ -7,6 +7,8 @@ class TryOnStatusResponse(BaseModel):
     is_configured: bool
     model_name: str
     endpoint: str
+    provider: Optional[str] = "fashn"
+    supported_providers: List[str] = ["fashn", "idm_vton", "nvidia_nim"]
 
 
 class TryOnResponse(BaseModel):
