@@ -1,9 +1,6 @@
-import asyncio
 import base64
 import io
 import logging
-import os
-import tempfile
 from typing import Optional, Tuple
 from PIL import Image, ImageOps
 import httpx
@@ -108,168 +105,6 @@ def create_tryon_composite(
     return composite_bytes, data_uri
 
 
-def normalize_fashn_category(category: Optional[str]) -> str:
-    """Normalizes wardrobe garment categories into FASHN VTON 1.5 supported categories."""
-    if not category:
-        return "tops"
-    c = category.strip().lower()
-    if any(k in c for k in ("bottom", "pant", "jean", "skirt", "trouser", "short", "legging")):
-        return "bottoms"
-    if any(k in c for k in ("dress", "one-piece", "one_piece", "onepiece", "suit", "romper", "jumpsuit", "overall")):
-        return "one-pieces"
-    return "tops"
-
-
-async def call_fashn_vton(
-    person_bytes: bytes,
-    garment_bytes: bytes,
-    category: Optional[str] = "tops",
-    garment_photo_type: str = "flat-lay",
-    num_timesteps: int = 30,
-    guidance_scale: float = 1.5,
-    seed: int = 42,
-    segmentation_free: bool = True,
-) -> bytes:
-    """
-    Executes true AI Virtual Try-On using official FASHN VTON v1.5 (Apache-2.0).
-    Features:
-    - Multimodal Diffusion Transformer (MMDiT) in RGB pixel space.
-    - Maskless (segmentation-free) inference.
-    - Categorized garment wrapping for 'tops', 'bottoms', and 'one-pieces'.
-    """
-    target_category = normalize_fashn_category(category)
-    logger.info("Calling FASHN VTON 1.5 (%s, category=%s)...", settings.FASHN_VTON_SPACE, target_category)
-
-    def _sync_fashn_vton() -> bytes:
-        from gradio_client import Client, handle_file
-
-        hf_token = settings.HF_TOKEN.strip() if settings.HF_TOKEN and settings.HF_TOKEN.strip() else None
-        client = Client(settings.FASHN_VTON_SPACE, hf_token=hf_token)
-
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f_person:
-            f_person.write(person_bytes)
-            person_path = f_person.name
-
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f_garment:
-            f_garment.write(garment_bytes)
-            garment_path = f_garment.name
-
-        try:
-            result = client.predict(
-                person_image=handle_file(person_path),
-                garment_image=handle_file(garment_path),
-                category=target_category,
-                garment_photo_type=garment_photo_type,
-                num_timesteps=float(num_timesteps),
-                guidance_scale=float(guidance_scale),
-                seed=int(seed),
-                segmentation_free=segmentation_free,
-                api_name="/try_on",
-            )
-            if isinstance(result, dict) and "path" in result:
-                output_image_path = result["path"]
-            elif isinstance(result, str):
-                output_image_path = result
-            elif isinstance(result, (list, tuple)) and len(result) > 0:
-                output_image_path = result[0]["path"] if isinstance(result[0], dict) else result[0]
-            else:
-                raise ValueError(f"Unexpected response format from FASHN VTON: {result}")
-
-            with open(output_image_path, "rb") as out_f:
-                return out_f.read()
-        finally:
-            for p in (person_path, garment_path):
-                if os.path.exists(p):
-                    try:
-                        os.unlink(p)
-                    except Exception:
-                        pass
-
-    loop = asyncio.get_running_loop()
-    try:
-        output_bytes = await loop.run_in_executor(None, _sync_fashn_vton)
-        test_img = Image.open(io.BytesIO(output_bytes))
-        test_img.verify()
-        logger.info("FASHN VTON 1.5 try-on completed successfully (size: %s)", len(output_bytes))
-        return output_bytes
-    except Exception as exc:
-        logger.error("FASHN VTON inference error: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Virtual Try-On generation error from {settings.FASHN_VTON_SPACE}: {exc}",
-        )
-
-
-async def call_idm_vton(
-    person_bytes: bytes,
-    garment_bytes: bytes,
-    garment_description: Optional[str] = None,
-) -> bytes:
-    """
-    Executes true AI Virtual Try-On using IDM-VTON (ECCV 2024).
-    Accepts (1) Person image and (2) Garment image as separate native inputs,
-    warps the clothing naturally to fit the body pose, sleeves, and torso,
-    and preserves 100% of the person's face, hair, and original background.
-    """
-    logger.info("Calling dedicated IDM-VTON model (%s)...", settings.IDM_VTON_SPACE)
-
-    def _sync_idm_vton() -> bytes:
-        from gradio_client import Client, handle_file
-
-        hf_token = settings.HF_TOKEN.strip() if settings.HF_TOKEN and settings.HF_TOKEN.strip() else None
-        client = Client(settings.IDM_VTON_SPACE, hf_token=hf_token)
-
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f_person:
-            f_person.write(person_bytes)
-            person_path = f_person.name
-
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f_garment:
-            f_garment.write(garment_bytes)
-            garment_path = f_garment.name
-
-        try:
-            description = garment_description.strip() if garment_description and garment_description.strip() else "Clothing garment"
-            result = client.predict(
-                dict={
-                    "background": handle_file(person_path),
-                    "layers": [],
-                    "composite": None,
-                },
-                garm_img=handle_file(garment_path),
-                garment_des=description,
-                is_checked=True,        # Automatic body parsing & masking
-                is_checked_crop=False,  # Preserve natural pose & framing
-                denoise_steps=30,
-                seed=42,
-                api_name="/tryon",
-            )
-            output_image_path, _ = result
-            with open(output_image_path, "rb") as out_f:
-                return out_f.read()
-        finally:
-            for p in (person_path, garment_path):
-                if os.path.exists(p):
-                    try:
-                        os.unlink(p)
-                    except Exception:
-                        pass
-
-    loop = asyncio.get_running_loop()
-    try:
-        output_bytes = await loop.run_in_executor(None, _sync_idm_vton)
-        # Verify result with Pillow
-        test_img = Image.open(io.BytesIO(output_bytes))
-        test_img.verify()
-        logger.info("IDM-VTON try-on completed successfully (size: %s)", len(output_bytes))
-        return output_bytes
-    except Exception as exc:
-        logger.error("IDM-VTON inference error: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Virtual Try-On generation error from {settings.IDM_VTON_SPACE}: {exc}",
-        )
-
-
 async def call_nvidia_qwen_image_edit(
     composite_data_uri: str,
     prompt: str,
@@ -331,7 +166,9 @@ async def call_nvidia_qwen_image_edit(
                 f"NVIDIA endpoint returned 404 Not Found at '{target_endpoint}'. "
                 "Per NVIDIA's model catalog (build.nvidia.com/qwen/qwen-image-edit), "
                 "Qwen-Image-Edit is an NVIDIA NIM 'Run Anywhere' container (nvcr.io/nim/qwen/qwen-image-edit:latest). "
-                "NVIDIA does not host a shared public cloud endpoint for this model."
+                "NVIDIA does not host a shared public cloud endpoint for this model. "
+                "To use Qwen-Image-Edit, run the official NIM container on a GPU instance (e.g. docker run -p 8080:8000 nvcr.io/nim/qwen/qwen-image-edit) "
+                "and set NVIDIA_TRYON_ENDPOINT=http://<host>:8080/v1/infer in backend/.env."
             ),
         )
     elif response.status_code == 429:
@@ -402,6 +239,7 @@ def synthesize_virtual_tryon_image(
 ) -> bytes:
     """
     Fallback synthesis when no GPU inference endpoint is reachable.
+    Removes the garment background cleanly using rembg and composites onto the torso.
     """
     person_img = Image.open(io.BytesIO(person_bytes))
     person_img = ImageOps.exif_transpose(person_img).convert("RGBA")
@@ -446,128 +284,31 @@ def synthesize_virtual_tryon_image(
     return buf.getvalue()
 
 
-def _is_quota_error(exc: Exception) -> bool:
-    msg = str(exc).lower()
-    return any(k in msg for k in ("zerogpu", "quota", "rate limit", "exceeded your"))
-
-
 async def generate_virtual_tryon(
     person_bytes: bytes,
     garment_bytes: bytes,
     custom_prompt: Optional[str] = None,
-    provider: Optional[str] = None,
-    category: Optional[str] = None,
 ) -> bytes:
     """
-    End-to-end execution of AI Virtual Try-On.
-    Supported providers:
-    - 'fashn' (FASHN VTON v1.5, default zero-budget MMDiT model)
-    - 'idm_vton' (IDM-VTON ECCV 2024 neural diffusion)
-    - 'nvidia_nim' (Qwen-Image-Edit NIM container)
+    End-to-end execution of AI Virtual Try-On using NVIDIA Qwen-Image-Edit NIM.
+    Requires NVIDIA_API_KEY to be configured in backend/.env.
     """
-    active_provider = (provider or settings.TRYON_PROVIDER).lower().strip()
-
-    if active_provider in ("fashn", "fashn_vton"):
-        try:
-            return await call_fashn_vton(
-                person_bytes=person_bytes,
-                garment_bytes=garment_bytes,
-                category=category,
-            )
-        except Exception as e:
-            if _is_quota_error(e):
-                logger.warning("FASHN ZeroGPU quota reached: %s. Trying IDM-VTON fallback.", e)
-            else:
-                logger.warning("FASHN VTON failed: %s. Falling back to IDM-VTON.", e)
-            try:
-                return await call_idm_vton(
-                    person_bytes=person_bytes,
-                    garment_bytes=garment_bytes,
-                    garment_description=custom_prompt,
-                )
-            except Exception as e2:
-                if _is_quota_error(e) or _is_quota_error(e2):
-                    raise HTTPException(
-                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                        detail=(
-                            "Hugging Face free ZeroGPU quota limit reached. "
-                            "To unlock unlimited/replenished quota, create a free Hugging Face account at "
-                            "https://huggingface.co/settings/tokens, create a User Access Token, and set "
-                            "HF_TOKEN=hf_... in backend/.env"
-                        ),
-                    )
-                logger.warning("IDM-VTON fallback also failed: %s. Falling back to local synthesis.", e2)
-                return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
-
-    elif active_provider == "idm_vton":
-        try:
-            return await call_idm_vton(
-                person_bytes=person_bytes,
-                garment_bytes=garment_bytes,
-                garment_description=custom_prompt,
-            )
-        except Exception as e:
-            if _is_quota_error(e):
-                logger.warning("IDM-VTON ZeroGPU quota reached: %s. Trying FASHN fallback.", e)
-            else:
-                logger.warning("IDM-VTON failed: %s. Falling back to FASHN VTON.", e)
-            try:
-                return await call_fashn_vton(
-                    person_bytes=person_bytes,
-                    garment_bytes=garment_bytes,
-                    category=category,
-                )
-            except Exception as e2:
-                if _is_quota_error(e) or _is_quota_error(e2):
-                    raise HTTPException(
-                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                        detail=(
-                            "Hugging Face free ZeroGPU quota limit reached. "
-                            "To unlock unlimited/replenished quota, create a free Hugging Face account at "
-                            "https://huggingface.co/settings/tokens, create a User Access Token, and set "
-                            "HF_TOKEN=hf_... in backend/.env"
-                        ),
-                    )
-                logger.warning("FASHN fallback failed: %s. Falling back to local synthesis.", e2)
-                return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
-
-    elif active_provider == "nvidia_nim":
-        api_key = settings.NVIDIA_API_KEY
-        if not api_key or not api_key.strip():
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="NVIDIA_API_KEY is not configured on the backend.",
-            )
-
-        _, composite_data_uri = create_tryon_composite(person_bytes, garment_bytes)
-        effective_prompt = (
-            f"Virtual Try-On: The person on the left must wear the clothing item shown on the right. "
-            f"{custom_prompt.strip() if custom_prompt else DEFAULT_TRYON_PROMPT} "
-            f"Remove the reference panel completely. Fit the garment naturally to the torso and arms."
+    api_key = settings.NVIDIA_API_KEY
+    if not api_key or not api_key.strip():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="NVIDIA_API_KEY is not configured on the backend.",
         )
 
-        try:
-            return await call_nvidia_qwen_image_edit(
-                composite_data_uri=composite_data_uri,
-                prompt=effective_prompt,
-                api_key=api_key,
-            )
-        except HTTPException as exc:
-            if exc.status_code == 502 and "404" in exc.detail:
-                logger.info("NVIDIA NIM 404, falling back to FASHN VTON 1.5.")
-                return await call_fashn_vton(
-                    person_bytes=person_bytes,
-                    garment_bytes=garment_bytes,
-                    category=category,
-                )
-            raise exc
+    _, composite_data_uri = create_tryon_composite(person_bytes, garment_bytes)
+    effective_prompt = (
+        f"Virtual Try-On: The person on the left must wear the clothing item shown on the right. "
+        f"{custom_prompt.strip() if custom_prompt else DEFAULT_TRYON_PROMPT} "
+        f"Remove the reference panel completely. Fit the garment naturally to the torso and arms."
+    )
 
-    # Default fallback to FASHN then synthesis
-    try:
-        return await call_fashn_vton(
-            person_bytes=person_bytes,
-            garment_bytes=garment_bytes,
-            category=category,
-        )
-    except Exception:
-        return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
+    return await call_nvidia_qwen_image_edit(
+        composite_data_uri=composite_data_uri,
+        prompt=effective_prompt,
+        api_key=api_key,
+    )

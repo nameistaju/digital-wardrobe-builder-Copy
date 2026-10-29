@@ -79,24 +79,6 @@ class Settings(BaseSettings):
         description="Timeout in seconds for AI image generation requests",
     )
 
-    # Virtual Try-On Engine: Supports 'fashn' (FASHN VTON v1.5), 'idm_vton' (IDM-VTON), or 'nvidia_nim' (Qwen-Image-Edit)
-    TRYON_PROVIDER: str = Field(
-        default="fashn",
-        description="Try-on engine: 'fashn' (FASHN VTON v1.5), 'idm_vton' (IDM-VTON), or 'nvidia_nim' (NIM Qwen)",
-    )
-    FASHN_VTON_SPACE: str = Field(
-        default="fashn-ai/fashn-vton-1.5",
-        description="Official FASHN VTON v1.5 model space",
-    )
-    IDM_VTON_SPACE: str = Field(
-        default="yisol/IDM-VTON",
-        description="Dedicated IDM-VTON model endpoint",
-    )
-    HF_TOKEN: Optional[str] = Field(
-        default=None,
-        description="Optional free Hugging Face token for ZeroGPU quota expansion",
-    )
-
     @field_validator("PORT", mode="before")
     @classmethod
     def validate_port(cls, v: object) -> int:
