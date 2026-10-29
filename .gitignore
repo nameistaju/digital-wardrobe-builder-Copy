@@ -23,6 +23,9 @@ backend/.ruff_cache/
 backend/.coverage
 backend/htmlcov/
 backend/.env
+.env
+*.env
+*.env.local
 backend/*.db
 *.db
 *.py[cod]
