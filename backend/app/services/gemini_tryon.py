@@ -94,16 +94,17 @@ async def call_gemini_image_edit(
     payload = {
         "contents": [
             {
+                "role": "user",
                 "parts": [
-                    {"text": prompt_text},
                     person_part,
                     garment_part,
-                ]
+                    {"text": prompt_text},
+                ],
             }
         ],
         "generationConfig": {
+            "responseModalities": ["IMAGE"],
             "temperature": 0.4,
-            "responseMimeType": "image/png",
         },
     }
 
@@ -136,23 +137,10 @@ async def call_gemini_image_edit(
         )
     elif response.status_code == 400:
         logger.error("Google Gemini 400 Bad Request: %s", response.text)
-        # Attempt without responseMimeType in case model prefers default
-        payload.pop("generationConfig", None)
-        try:
-            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-                retry_response = await client.post(url, json=payload)
-            if retry_response.status_code == 200:
-                response = retry_response
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Google Gemini request rejected: {retry_response.text[:300]}",
-                )
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Google Gemini request rejected: {response.text[:300]}",
-            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Google Gemini request rejected: {response.text[:300]}",
+        )
     elif response.status_code >= 400:
         logger.error("Google Gemini API error (HTTP %s): %s", response.status_code, response.text)
         raise HTTPException(
