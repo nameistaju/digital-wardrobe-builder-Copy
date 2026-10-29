@@ -79,6 +79,16 @@ class Settings(BaseSettings):
         description="Timeout in seconds for AI image generation requests",
     )
 
+    # Virtual Try-On Engine: Supports dedicated VTON ('idm_vton') or NVIDIA NIM ('nvidia_nim')
+    TRYON_PROVIDER: str = Field(
+        default="idm_vton",
+        description="Try-on engine: 'idm_vton' (dedicated diffusion VTON) or 'nvidia_nim' (self-hosted NIM)",
+    )
+    IDM_VTON_SPACE: str = Field(
+        default="yisol/IDM-VTON",
+        description="Dedicated IDM-VTON model endpoint",
+    )
+
     @field_validator("PORT", mode="before")
     @classmethod
     def validate_port(cls, v: object) -> int:

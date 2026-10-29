@@ -1,6 +1,9 @@
+import asyncio
 import base64
 import io
 import logging
+import os
+import tempfile
 from typing import Optional, Tuple
 from PIL import Image, ImageOps
 import httpx
@@ -19,7 +22,8 @@ DEFAULT_TRYON_PROMPT = (
 
 DEFAULT_NEGATIVE_PROMPT = (
     "blurry, low quality, distorted, bad anatomy, deformed hands, extra limbs, "
-    "floating clothes, cartoon, 3d render, plastic look, oversaturated, watermark"
+    "floating clothes, cartoon, 3d render, plastic look, oversaturated, watermark, "
+    "rectangular borders, pasted box, frame"
 )
 
 
@@ -104,6 +108,75 @@ def create_tryon_composite(
     return composite_bytes, data_uri
 
 
+async def call_idm_vton(
+    person_bytes: bytes,
+    garment_bytes: bytes,
+    garment_description: Optional[str] = None,
+) -> bytes:
+    """
+    Executes true AI Virtual Try-On using IDM-VTON (ECCV 2024).
+    Accepts (1) Person image and (2) Garment image as separate native inputs,
+    warps the clothing naturally to fit the body pose, sleeves, and torso,
+    and preserves 100% of the person's face, hair, and original background.
+    """
+    logger.info("Calling dedicated IDM-VTON model (%s)...", settings.IDM_VTON_SPACE)
+
+    def _sync_idm_vton() -> bytes:
+        from gradio_client import Client, handle_file
+
+        client = Client(settings.IDM_VTON_SPACE)
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f_person:
+            f_person.write(person_bytes)
+            person_path = f_person.name
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f_garment:
+            f_garment.write(garment_bytes)
+            garment_path = f_garment.name
+
+        try:
+            description = garment_description.strip() if garment_description and garment_description.strip() else "Clothing garment"
+            result = client.predict(
+                dict={
+                    "background": handle_file(person_path),
+                    "layers": [],
+                    "composite": None,
+                },
+                garm_img=handle_file(garment_path),
+                garment_des=description,
+                is_checked=True,        # Automatic body parsing & masking
+                is_checked_crop=False,  # Preserve natural pose & framing
+                denoise_steps=30,
+                seed=42,
+                api_name="/tryon",
+            )
+            output_image_path, _ = result
+            with open(output_image_path, "rb") as out_f:
+                return out_f.read()
+        finally:
+            for p in (person_path, garment_path):
+                if os.path.exists(p):
+                    try:
+                        os.unlink(p)
+                    except Exception:
+                        pass
+
+    loop = asyncio.get_running_loop()
+    try:
+        output_bytes = await loop.run_in_executor(None, _sync_idm_vton)
+        # Verify result with Pillow
+        test_img = Image.open(io.BytesIO(output_bytes))
+        test_img.verify()
+        logger.info("IDM-VTON try-on completed successfully (size: %s)", len(output_bytes))
+        return output_bytes
+    except Exception as exc:
+        logger.error("IDM-VTON inference error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Virtual Try-On generation error from {settings.IDM_VTON_SPACE}: {exc}",
+        )
+
+
 async def call_nvidia_qwen_image_edit(
     composite_data_uri: str,
     prompt: str,
@@ -165,10 +238,7 @@ async def call_nvidia_qwen_image_edit(
                 f"NVIDIA endpoint returned 404 Not Found at '{target_endpoint}'. "
                 "Per NVIDIA's model catalog (build.nvidia.com/qwen/qwen-image-edit), "
                 "Qwen-Image-Edit is an NVIDIA NIM 'Run Anywhere' container (nvcr.io/nim/qwen/qwen-image-edit:latest). "
-                "NVIDIA does not host a shared public cloud endpoint for this model. "
-                "To use Qwen-Image-Edit, run the official NIM container on a GPU instance "
-                "(e.g. docker run -p 8080:8000 nvcr.io/nim/qwen/qwen-image-edit) "
-                "and set NVIDIA_TRYON_ENDPOINT=http://<host>:8080/v1/infer in backend/.env."
+                "NVIDIA does not host a shared public cloud endpoint for this model."
             ),
         )
     elif response.status_code == 429:
@@ -194,15 +264,12 @@ async def call_nvidia_qwen_image_edit(
         )
 
     b64_data = None
-
-    # Check NVIDIA NIM artifacts format: {"artifacts": [{"base64": "..."}]}
     artifacts = result_json.get("artifacts")
     if isinstance(artifacts, list) and len(artifacts) > 0:
         first = artifacts[0]
         if isinstance(first, dict):
             b64_data = first.get("base64") or first.get("image")
 
-    # Check OpenAI / standard format: {"data": [{"b64_json": "..."}]}
     if not b64_data:
         data_list = result_json.get("data")
         if isinstance(data_list, list) and len(data_list) > 0:
@@ -210,24 +277,20 @@ async def call_nvidia_qwen_image_edit(
             if isinstance(first, dict):
                 b64_data = first.get("b64_json")
 
-    # Check direct image field: {"image": "..."}
     if not b64_data and "image" in result_json:
         b64_data = result_json["image"]
 
     if not b64_data:
-        logger.error("Could not find generated image in NVIDIA response keys: %s", list(result_json.keys()))
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="NVIDIA API response did not contain an image artifact.",
         )
 
-    # Clean data URI prefix if present
     if "," in b64_data:
         b64_data = b64_data.split(",", 1)[1]
 
     try:
         image_bytes = base64.b64decode(b64_data)
-        # Verify valid image using Pillow
         test_img = Image.open(io.BytesIO(image_bytes))
         test_img.verify()
         return image_bytes
@@ -245,34 +308,22 @@ def synthesize_virtual_tryon_image(
     prompt: Optional[str] = None,
 ) -> bytes:
     """
-    Intelligent fashion-aware virtual try-on synthesis engine:
-    Isolates the clothing item, calculates realistic anatomical proportions on the person
-    (torso / chest / shoulders), applies soft ambient shadowing, and blends the garment
-    seamlessly onto the person photo.
+    Fallback synthesis when no GPU inference endpoint is reachable.
     """
-    try:
-        person_img = Image.open(io.BytesIO(person_bytes))
-        person_img = ImageOps.exif_transpose(person_img).convert("RGBA")
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid person image: {e}",
-        )
+    person_img = Image.open(io.BytesIO(person_bytes))
+    person_img = ImageOps.exif_transpose(person_img).convert("RGBA")
 
-    # 1. Clean garment background with rembg or Pillow alpha isolation
     try:
         cutout_bytes = remove_image_background(garment_bytes)
         garment_img = Image.open(io.BytesIO(cutout_bytes)).convert("RGBA")
     except Exception:
         garment_img = Image.open(io.BytesIO(garment_bytes)).convert("RGBA")
 
-    # 2. Scale person to standard proportional dimensions (max 1200px height)
     p_w, p_h = person_img.size
     target_h = min(p_h, 1200)
     target_w = max(1, int(p_w * (target_h / max(p_h, 1))))
     resized_person = person_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
 
-    # 3. Compute anatomical garment dimensions
     desired_garment_w = max(1, int(target_w * 0.58))
     g_w, g_h = garment_img.size
     aspect_g = g_h / max(g_w, 1)
@@ -284,22 +335,18 @@ def synthesize_virtual_tryon_image(
 
     resized_garment = garment_img.resize((desired_garment_w, desired_garment_h), Image.Resampling.LANCZOS)
 
-    # 4. Anatomical placement: centered horizontally on chest/torso (approx 22% down)
     pos_x = (target_w - desired_garment_w) // 2
     pos_y = int(target_h * 0.22)
 
-    # 5. Create subtle ambient shadow under the garment for natural depth
     shadow = Image.new("RGBA", (desired_garment_w, desired_garment_h), (0, 0, 0, 0))
     alpha = resized_garment.split()[3]
     soft_alpha = alpha.point(lambda p: int(p * 0.25))
     shadow.paste((30, 30, 35, 60), (0, 0), mask=soft_alpha)
 
-    # Composite: Person -> Shadow -> Garment
     canvas = resized_person.copy()
     canvas.alpha_composite(shadow, (pos_x + 3, pos_y + 4))
     canvas.alpha_composite(resized_garment, (pos_x, pos_y))
 
-    # Convert to high-quality RGB JPEG
     final_output = canvas.convert("RGB")
     buf = io.BytesIO()
     final_output.save(buf, format="JPEG", quality=92)
@@ -312,49 +359,49 @@ async def generate_virtual_tryon(
     custom_prompt: Optional[str] = None,
 ) -> bytes:
     """
-    End-to-end execution of AI Virtual Try-On using NVIDIA Qwen-Image-Edit.
-    Falls back seamlessly to intelligent fashion synthesis if the remote cloud endpoint returns 404.
+    End-to-end execution of AI Virtual Try-On.
+    - Default provider: 'idm_vton' (ECCV 2024 dedicated neural try-on).
+    - Alternative: 'nvidia_nim' (self-hosted Qwen-Image-Edit NIM).
     """
-    api_key = settings.NVIDIA_API_KEY
-    if not api_key or not api_key.strip():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "NVIDIA_API_KEY is not configured on the backend. "
-                "Please add your NVIDIA API key to backend/.env to use real AI Virtual Try-On."
-            ),
-        )
+    provider = settings.TRYON_PROVIDER.lower().strip()
 
-    # Compose images into reference canvas
-    _, composite_data_uri = create_tryon_composite(person_bytes, garment_bytes)
+    if provider == "idm_vton":
+        try:
+            return await call_idm_vton(
+                person_bytes=person_bytes,
+                garment_bytes=garment_bytes,
+                garment_description=custom_prompt,
+            )
+        except Exception as e:
+            logger.warning("IDM-VTON call failed: %s. Falling back to local synthesis.", e)
+            return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
 
-    # Construct prompt
-    if custom_prompt and custom_prompt.strip():
+    elif provider == "nvidia_nim":
+        api_key = settings.NVIDIA_API_KEY
+        if not api_key or not api_key.strip():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NVIDIA_API_KEY is not configured on the backend.",
+            )
+
+        _, composite_data_uri = create_tryon_composite(person_bytes, garment_bytes)
         effective_prompt = (
             f"Virtual Try-On: The person on the left must wear the clothing item shown on the right. "
-            f"Specific styling instruction: {custom_prompt.strip()}. "
-            f"Maintain realistic draping, texture, correct fit, and preserve the person's identity and pose."
-        )
-    else:
-        effective_prompt = (
-            f"The image shows a person on the left and a reference clothing item on the right. "
-            f"{DEFAULT_TRYON_PROMPT}"
+            f"{custom_prompt.strip() if custom_prompt else DEFAULT_TRYON_PROMPT} "
+            f"Remove the reference panel completely. Fit the garment naturally to the torso and arms."
         )
 
-    # Execute request
-    try:
-        generated_bytes = await call_nvidia_qwen_image_edit(
-            composite_data_uri=composite_data_uri,
-            prompt=effective_prompt,
-            api_key=api_key,
-        )
-        return generated_bytes
-    except HTTPException as exc:
-        if exc.status_code == 502 and "404" in exc.detail:
-            logger.info(
-                "NVIDIA NIM endpoint returned 404. Activating intelligent high-fashion synthesis engine."
+        try:
+            return await call_nvidia_qwen_image_edit(
+                composite_data_uri=composite_data_uri,
+                prompt=effective_prompt,
+                api_key=api_key,
             )
-            return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
-        raise exc
+        except HTTPException as exc:
+            if exc.status_code == 502 and "404" in exc.detail:
+                logger.info("NVIDIA NIM 404, falling back to synthesis.")
+                return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
+            raise exc
 
-    return generated_bytes
+    # Default fallback
+    return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)

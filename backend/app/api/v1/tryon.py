@@ -21,12 +21,21 @@ router = APIRouter()
 
 @router.get("/status", response_model=TryOnStatusResponse)
 async def get_tryon_status():
-    """Returns availability and configuration state of the NVIDIA Virtual Try-On service."""
-    has_key = bool(settings.NVIDIA_API_KEY and settings.NVIDIA_API_KEY.strip())
+    """Returns availability and configuration state of the Virtual Try-On service."""
+    provider = settings.TRYON_PROVIDER.lower().strip()
+    is_ready = True
+    if provider == "nvidia_nim":
+        is_ready = bool(settings.NVIDIA_API_KEY and settings.NVIDIA_API_KEY.strip())
+        model_name = "NVIDIA NIM Qwen-Image-Edit"
+        endpoint = settings.NVIDIA_TRYON_ENDPOINT
+    else:
+        model_name = "IDM-VTON (ECCV 2024 Neural Try-On)"
+        endpoint = settings.IDM_VTON_SPACE
+
     return TryOnStatusResponse(
-        is_configured=has_key,
-        model_name="qwen/qwen-image-edit",
-        endpoint=settings.NVIDIA_TRYON_ENDPOINT,
+        is_configured=is_ready,
+        model_name=model_name,
+        endpoint=endpoint,
     )
 
 
