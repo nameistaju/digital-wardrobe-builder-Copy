@@ -109,6 +109,30 @@ def test_tryon_successful_generation_qwen():
             assert hist["items"][0]["id"] == data["id"]
 
 
+def test_tryon_successful_generation_qwen_image_model():
+    token = get_auth_token("success_qwen_image")
+    person_img = create_test_image_bytes((110, 140, 170))
+    garment_img = create_test_image_bytes((210, 70, 40))
+    mock_result_bytes = create_test_image_bytes((90, 190, 90))
+
+    with patch.object(settings, "NVIDIA_API_KEY", "nvapi-test-mock-key"):
+        with patch("app.services.nvidia_tryon.call_nvidia_qwen_image", return_value=mock_result_bytes):
+            res = client.post(
+                "/api/v1/try-on/generate",
+                headers={"Authorization": f"Bearer {token}"},
+                files={
+                    "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
+                    "garment_image": ("jacket.jpg", io.BytesIO(garment_img), "image/jpeg"),
+                },
+                data={"prompt": "Stylish leather jacket", "model": "qwen-image"},
+            )
+
+            assert res.status_code == 201
+            data = res.json()
+            assert data["id"] > 0
+            assert data["status"] == "completed"
+
+
 def test_tryon_with_existing_wardrobe_garment():
     token = get_auth_token("wardrobe_tryon")
 

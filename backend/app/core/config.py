@@ -65,14 +65,18 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = Field(default="digital-wardrobe-assets", description="Cloudflare R2 Bucket Name")
     R2_ENDPOINT_URL: Optional[str] = Field(default=None, description="Direct R2 S3 API Endpoint URL")
 
-    # NVIDIA NIM Virtual Try-On (Qwen-Image-Edit)
+    # NVIDIA NIM Virtual Try-On (Qwen Models)
     NVIDIA_API_KEY: Optional[str] = Field(
         default=None,
-        description="NVIDIA API Key for Qwen-Image-Edit virtual try-on (never expose to frontend)",
+        description="NVIDIA API Key for Qwen virtual try-on models (never expose to frontend)",
     )
     NVIDIA_TRYON_ENDPOINT: str = Field(
         default="https://integrate.api.nvidia.com/v1/genai/qwen/qwen-image-edit",
-        description="NVIDIA NIM endpoint for Qwen-Image-Edit",
+        description="NVIDIA NIM endpoint for Qwen-Image-Edit (or local http://localhost:8080/v1/infer)",
+    )
+    NVIDIA_QWEN_IMAGE_ENDPOINT: str = Field(
+        default="https://integrate.api.nvidia.com/v1/genai/qwen/qwen-image",
+        description="NVIDIA NIM endpoint for Qwen-Image foundation model (or local http://localhost:8000/v1/infer)",
     )
     NVIDIA_TRYON_TIMEOUT_SECONDS: int = Field(
         default=120,

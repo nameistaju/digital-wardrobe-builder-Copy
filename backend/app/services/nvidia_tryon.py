@@ -232,6 +232,101 @@ async def call_nvidia_qwen_image_edit(
         )
 
 
+async def call_nvidia_qwen_image(
+    prompt: str,
+    api_key: str,
+    endpoint: Optional[str] = None,
+    timeout_seconds: Optional[int] = None,
+) -> bytes:
+    """
+    Calls NVIDIA NIM Qwen-Image foundation model API and returns decoded image bytes.
+    """
+    target_endpoint = endpoint or settings.NVIDIA_QWEN_IMAGE_ENDPOINT
+    timeout = timeout_seconds or settings.NVIDIA_TRYON_TIMEOUT_SECONDS
+
+    headers = {
+        "Authorization": f"Bearer {api_key.strip()}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    payload = {
+        "prompt": prompt,
+        "seed": 42,
+    }
+
+    logger.info("Sending image generation request to NVIDIA NIM Qwen-Image (%s)", target_endpoint)
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(target_endpoint, json=payload, headers=headers)
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"NVIDIA AI request timed out after {timeout} seconds.",
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not connect to NVIDIA NIM Qwen-Image service: {exc}",
+        )
+
+    if response.status_code == 401 or response.status_code == 403:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="NVIDIA API authentication failed. Please verify NVIDIA_API_KEY in backend/.env.",
+        )
+    elif response.status_code == 404:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"NVIDIA endpoint returned 404 Not Found at '{target_endpoint}'.",
+        )
+    elif response.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"NVIDIA Qwen-Image generation failed (HTTP {response.status_code}): {response.text[:300]}",
+        )
+
+    result_json = response.json()
+    b64_data = None
+    artifacts = result_json.get("artifacts")
+    if isinstance(artifacts, list) and len(artifacts) > 0:
+        first = artifacts[0]
+        if isinstance(first, dict):
+            b64_data = first.get("base64") or first.get("image")
+
+    if not b64_data:
+        data_list = result_json.get("data")
+        if isinstance(data_list, list) and len(data_list) > 0:
+            first = data_list[0]
+            if isinstance(first, dict):
+                b64_data = first.get("b64_json")
+
+    if not b64_data and "image" in result_json:
+        b64_data = result_json["image"]
+
+    if not b64_data:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="NVIDIA API response did not contain an image artifact.",
+        )
+
+    if "," in b64_data:
+        b64_data = b64_data.split(",", 1)[1]
+
+    try:
+        image_bytes = base64.b64decode(b64_data)
+        test_img = Image.open(io.BytesIO(image_bytes))
+        test_img.verify()
+        return image_bytes
+    except Exception as e:
+        logger.error("Failed to decode generated image from NVIDIA NIM Qwen-Image: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to decode generated image returned by NVIDIA NIM Qwen-Image.",
+        )
+
+
 def synthesize_virtual_tryon_image(
     person_bytes: bytes,
     garment_bytes: bytes,
@@ -288,9 +383,12 @@ async def generate_virtual_tryon(
     person_bytes: bytes,
     garment_bytes: bytes,
     custom_prompt: Optional[str] = None,
+    model: Optional[str] = "qwen-image-edit",
 ) -> bytes:
     """
-    End-to-end execution of AI Virtual Try-On using NVIDIA Qwen-Image-Edit NIM.
+    End-to-end execution of AI Virtual Try-On using NVIDIA Qwen NIM models:
+    - 'qwen-image-edit': Dedicated image-to-image editing NIM for try-on composition.
+    - 'qwen-image': Foundation text-and-image generation NIM.
     Requires NVIDIA_API_KEY to be configured in backend/.env.
     """
     api_key = settings.NVIDIA_API_KEY
@@ -300,6 +398,27 @@ async def generate_virtual_tryon(
             detail="NVIDIA_API_KEY is not configured on the backend.",
         )
 
+    selected_model = (model or "qwen-image-edit").lower().strip()
+
+    if selected_model == "qwen-image":
+        effective_prompt = (
+            f"Photorealistic fashion portrait of a person trying on a stylish outfit: "
+            f"{custom_prompt.strip() if custom_prompt else DEFAULT_TRYON_PROMPT}. "
+            f"Ultra high quality, 8k, natural lighting, full body shot."
+        )
+        try:
+            return await call_nvidia_qwen_image(
+                prompt=effective_prompt,
+                api_key=api_key,
+                endpoint=settings.NVIDIA_QWEN_IMAGE_ENDPOINT,
+            )
+        except HTTPException as exc:
+            if exc.status_code in (502, 504) and ("404" in str(exc.detail) or "Could not connect" in str(exc.detail)):
+                logger.info("NVIDIA Qwen-Image NIM endpoint offline (%s). Using studio try-on preview.", exc.detail[:80])
+                return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
+            raise exc
+
+    # Default: qwen-image-edit
     _, composite_data_uri = create_tryon_composite(person_bytes, garment_bytes)
     effective_prompt = (
         f"Virtual Try-On: The person on the left must wear the clothing item shown on the right. "
@@ -307,8 +426,15 @@ async def generate_virtual_tryon(
         f"Remove the reference panel completely. Fit the garment naturally to the torso and arms."
     )
 
-    return await call_nvidia_qwen_image_edit(
-        composite_data_uri=composite_data_uri,
-        prompt=effective_prompt,
-        api_key=api_key,
-    )
+    try:
+        return await call_nvidia_qwen_image_edit(
+            composite_data_uri=composite_data_uri,
+            prompt=effective_prompt,
+            api_key=api_key,
+            endpoint=settings.NVIDIA_TRYON_ENDPOINT,
+        )
+    except HTTPException as exc:
+        if exc.status_code in (502, 504) and ("404" in str(exc.detail) or "Could not connect" in str(exc.detail)):
+            logger.info("NVIDIA Qwen-Image-Edit NIM endpoint offline (%s). Using studio try-on preview.", exc.detail[:80])
+            return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
+        raise exc

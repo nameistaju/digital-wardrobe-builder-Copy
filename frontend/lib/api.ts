@@ -105,6 +105,7 @@ export interface TryOnStatusResponse {
   is_configured: boolean;
   model_name: string;
   endpoint: string;
+  available_models?: string[];
 }
 
 export interface TryOnRecord {

@@ -21,12 +21,13 @@ router = APIRouter()
 
 @router.get("/status", response_model=TryOnStatusResponse)
 async def get_tryon_status():
-    """Returns availability and configuration state of the NVIDIA Qwen Virtual Try-On service."""
+    """Returns availability and configuration state of the NVIDIA Qwen Virtual Try-On services."""
     is_ready = bool(settings.NVIDIA_API_KEY and settings.NVIDIA_API_KEY.strip())
     return TryOnStatusResponse(
         is_configured=is_ready,
-        model_name="NVIDIA NIM Qwen-Image-Edit",
+        model_name="NVIDIA NIM Qwen",
         endpoint=settings.NVIDIA_TRYON_ENDPOINT,
+        available_models=["qwen-image-edit", "qwen-image"],
     )
 
 
@@ -36,11 +37,12 @@ async def create_virtual_tryon(
     garment_image: Optional[UploadFile] = File(None, description="Clothing product photograph"),
     garment_id: Optional[int] = Form(None, description="ID of existing wardrobe item to try on"),
     prompt: Optional[str] = Form(None, description="Optional styling or draping instruction"),
+    model: Optional[str] = Form("qwen-image-edit", description="Qwen model to use ('qwen-image-edit' or 'qwen-image')"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Executes real AI Virtual Try-On using NVIDIA NIM Qwen-Image-Edit.
+    Executes real AI Virtual Try-On using NVIDIA NIM Qwen models (Qwen-Image-Edit or Qwen-Image).
     Takes a person photo and either an uploaded garment image or an existing wardrobe garment ID.
     """
     if not garment_image and not garment_id:
@@ -109,6 +111,7 @@ async def create_virtual_tryon(
         person_bytes=person_bytes,
         garment_bytes=garment_bytes,
         custom_prompt=prompt,
+        model=model,
     )
 
     # Save generated AI result image

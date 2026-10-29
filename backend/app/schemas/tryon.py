@@ -7,6 +7,7 @@ class TryOnStatusResponse(BaseModel):
     is_configured: bool
     model_name: str
     endpoint: str
+    available_models: List[str] = ["qwen-image-edit", "qwen-image"]
 
 
 class TryOnResponse(BaseModel):

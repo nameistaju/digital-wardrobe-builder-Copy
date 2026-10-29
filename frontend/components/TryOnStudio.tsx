@@ -60,6 +60,9 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
   const [garmentFile, setGarmentFile] = useState<File | null>(null);
   const [garmentPreview, setGarmentPreview] = useState<string | null>(null);
 
+  // Qwen Model Choice
+  const [selectedQwenModel, setSelectedQwenModel] = useState<"qwen-image-edit" | "qwen-image">("qwen-image-edit");
+
   const [customPrompt, setCustomPrompt] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStep, setGeneratingStep] = useState<string>("");
@@ -148,11 +151,13 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
 
     setError(null);
     setIsGenerating(true);
-    setGeneratingStep("Preparing images for NVIDIA Qwen Virtual Try-On...");
+    const modelName = selectedQwenModel === "qwen-image-edit" ? "Qwen-Image-Edit" : "Qwen-Image";
+    setGeneratingStep(`Preparing images for NVIDIA ${modelName}...`);
 
     try {
       const formData = new FormData();
       formData.append("person_image", personFile);
+      formData.append("model", selectedQwenModel);
 
       if (garmentMode === "upload" && garmentFile) {
         formData.append("garment_image", garmentFile);
@@ -164,7 +169,7 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
         formData.append("prompt", customPrompt.trim());
       }
 
-      setGeneratingStep("Generating realistic try-on via NVIDIA Qwen-Image-Edit...");
+      setGeneratingStep(`Generating realistic try-on via NVIDIA ${modelName}...`);
 
       const record = await generateVirtualTryOn(formData);
       setCurrentResult(record);
@@ -207,14 +212,17 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
         <div>
           <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-amber-50 text-amber-900 border border-amber-200 mb-2">
             <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            <span>{status?.model_name || "NVIDIA Qwen-Image-Edit NIM"}</span>
+            <span>
+              {selectedQwenModel === "qwen-image-edit"
+                ? "NVIDIA NIM: Qwen-Image-Edit"
+                : "NVIDIA NIM: Qwen-Image Foundation"}
+            </span>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-stone-950 font-serif">
             AI Virtual Try-On Studio
           </h1>
           <p className="text-sm text-stone-600 mt-1 max-w-2xl">
-            See yourself in any garment from your wardrobe or an uploaded clothing item using NVIDIA NIM
-            Qwen-Image-Edit.
+            See yourself in any garment from your wardrobe or an uploaded clothing item using Alibaba Cloud &amp; NVIDIA Qwen AI models.
           </p>
         </div>
 
@@ -223,7 +231,7 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
           {status?.is_configured ? (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>NVIDIA NIM Ready</span>
+              <span>NVIDIA Qwen Key Active</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
@@ -234,6 +242,62 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
         </div>
       </div>
 
+      {/* Qwen Models Selector (Choose Between Two Qwen Models) */}
+      <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-200 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-mono uppercase tracking-wider text-stone-600 font-medium flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+            Choose Qwen Model Engine
+          </label>
+          <span className="text-[11px] text-stone-400 font-mono">2 Models Configured</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setSelectedQwenModel("qwen-image-edit")}
+            className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+              selectedQwenModel === "qwen-image-edit"
+                ? "bg-white border-stone-900 shadow-xs ring-1 ring-stone-900 font-semibold text-stone-950"
+                : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
+            }`}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs font-semibold text-stone-900 flex items-center gap-1.5">
+                Qwen-Image-Edit
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-medium font-mono">
+                Recommended
+              </span>
+            </div>
+            <p className="text-[11px] text-stone-500 font-normal leading-relaxed">
+              Image-to-image foundation editing NIM. Performs contextual garment fitting, fabric drape, seams, and shadows directly onto your photo.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedQwenModel("qwen-image")}
+            className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+              selectedQwenModel === "qwen-image"
+                ? "bg-white border-stone-900 shadow-xs ring-1 ring-stone-900 font-semibold text-stone-950"
+                : "bg-stone-100/60 border-stone-200 text-stone-600 hover:bg-stone-100"
+            }`}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs font-semibold text-stone-900 flex items-center gap-1.5">
+                Qwen-Image
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 font-medium font-mono">
+                New Foundation
+              </span>
+            </div>
+            <p className="text-[11px] text-stone-500 font-normal leading-relaxed">
+              Diffusion-based vision-language foundation model. Supports precise multilingual text rendering and multimodal visual synthesis.
+            </p>
+          </button>
+        </div>
+      </div>
+
       {/* NVIDIA NIM Setup / Endpoint Notice */}
       {!status?.is_configured && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5 text-amber-950">
@@ -241,11 +305,11 @@ export function TryOnStudio({ garments, initialSelectedGarment, onOpenUpload }: 
             <Info className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
             <div className="space-y-2 text-sm">
               <div className="font-semibold text-amber-900">
-                Setup NVIDIA Qwen-Image-Edit NIM Container
+                Setup NVIDIA Qwen NIM Containers
               </div>
               <p className="text-amber-800/90 leading-relaxed">
-                Qwen-Image-Edit is an NVIDIA NIM container (<code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">nvcr.io/nim/qwen/qwen-image-edit:latest</code>).
-                To enable AI try-on, configure <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">NVIDIA_API_KEY</code> and set <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">NVIDIA_TRYON_ENDPOINT</code> in <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">backend/.env</code>.
+                Qwen models are distributed as NVIDIA NIM containers (<code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">nvcr.io/nim/qwen/qwen-image-edit:latest</code> and <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">nvcr.io/nim/qwen/qwen-image:latest</code>).
+                To enable AI try-on, configure <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">NVIDIA_API_KEY</code> in <code className="px-1.5 py-0.5 rounded bg-amber-100 font-mono text-xs">backend/.env</code>.
               </p>
             </div>
           </div>
