@@ -92,6 +92,10 @@ class Settings(BaseSettings):
         default="yisol/IDM-VTON",
         description="Dedicated IDM-VTON model endpoint",
     )
+    HF_TOKEN: Optional[str] = Field(
+        default=None,
+        description="Optional free Hugging Face token for ZeroGPU quota expansion",
+    )
 
     @field_validator("PORT", mode="before")
     @classmethod

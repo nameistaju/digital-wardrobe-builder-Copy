@@ -143,7 +143,8 @@ async def call_fashn_vton(
     def _sync_fashn_vton() -> bytes:
         from gradio_client import Client, handle_file
 
-        client = Client(settings.FASHN_VTON_SPACE)
+        hf_token = settings.HF_TOKEN.strip() if settings.HF_TOKEN and settings.HF_TOKEN.strip() else None
+        client = Client(settings.FASHN_VTON_SPACE, hf_token=hf_token)
 
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f_person:
             f_person.write(person_bytes)
@@ -215,7 +216,8 @@ async def call_idm_vton(
     def _sync_idm_vton() -> bytes:
         from gradio_client import Client, handle_file
 
-        client = Client(settings.IDM_VTON_SPACE)
+        hf_token = settings.HF_TOKEN.strip() if settings.HF_TOKEN and settings.HF_TOKEN.strip() else None
+        client = Client(settings.IDM_VTON_SPACE, hf_token=hf_token)
 
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f_person:
             f_person.write(person_bytes)
@@ -444,6 +446,11 @@ def synthesize_virtual_tryon_image(
     return buf.getvalue()
 
 
+def _is_quota_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(k in msg for k in ("zerogpu", "quota", "rate limit", "exceeded your"))
+
+
 async def generate_virtual_tryon(
     person_bytes: bytes,
     garment_bytes: bytes,
@@ -468,7 +475,10 @@ async def generate_virtual_tryon(
                 category=category,
             )
         except Exception as e:
-            logger.warning("FASHN VTON failed: %s. Falling back to IDM-VTON.", e)
+            if _is_quota_error(e):
+                logger.warning("FASHN ZeroGPU quota reached: %s. Trying IDM-VTON fallback.", e)
+            else:
+                logger.warning("FASHN VTON failed: %s. Falling back to IDM-VTON.", e)
             try:
                 return await call_idm_vton(
                     person_bytes=person_bytes,
@@ -476,6 +486,16 @@ async def generate_virtual_tryon(
                     garment_description=custom_prompt,
                 )
             except Exception as e2:
+                if _is_quota_error(e) or _is_quota_error(e2):
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail=(
+                            "Hugging Face free ZeroGPU quota limit reached. "
+                            "To unlock unlimited/replenished quota, create a free Hugging Face account at "
+                            "https://huggingface.co/settings/tokens, create a User Access Token, and set "
+                            "HF_TOKEN=hf_... in backend/.env"
+                        ),
+                    )
                 logger.warning("IDM-VTON fallback also failed: %s. Falling back to local synthesis.", e2)
                 return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
 
@@ -487,7 +507,10 @@ async def generate_virtual_tryon(
                 garment_description=custom_prompt,
             )
         except Exception as e:
-            logger.warning("IDM-VTON failed: %s. Falling back to FASHN VTON.", e)
+            if _is_quota_error(e):
+                logger.warning("IDM-VTON ZeroGPU quota reached: %s. Trying FASHN fallback.", e)
+            else:
+                logger.warning("IDM-VTON failed: %s. Falling back to FASHN VTON.", e)
             try:
                 return await call_fashn_vton(
                     person_bytes=person_bytes,
@@ -495,6 +518,16 @@ async def generate_virtual_tryon(
                     category=category,
                 )
             except Exception as e2:
+                if _is_quota_error(e) or _is_quota_error(e2):
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail=(
+                            "Hugging Face free ZeroGPU quota limit reached. "
+                            "To unlock unlimited/replenished quota, create a free Hugging Face account at "
+                            "https://huggingface.co/settings/tokens, create a User Access Token, and set "
+                            "HF_TOKEN=hf_... in backend/.env"
+                        ),
+                    )
                 logger.warning("FASHN fallback failed: %s. Falling back to local synthesis.", e2)
                 return synthesize_virtual_tryon_image(person_bytes, garment_bytes, custom_prompt)
 
