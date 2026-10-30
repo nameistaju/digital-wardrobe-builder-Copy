@@ -37,9 +37,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount local file storage for uploaded images
-app.mount("/storage", StaticFiles(directory=settings.absolute_storage_path), name="storage")
-
 # Register API v1 routes
 app.include_router(api_router, prefix=settings.API_V1_STR)
 

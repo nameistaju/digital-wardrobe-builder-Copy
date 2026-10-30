@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,9 +12,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const newsreader = Newsreader({
+  variable: "--font-newsreader",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+});
+
 export const metadata: Metadata = {
-  title: "Wardrobe — Digital Wardrobe Builder",
-  description: "A production-minded, zero-budget digital wardrobe builder for cataloging garments and AI-powered outfit curation.",
+  title: "Whearing — AI Virtual Try-On",
+  description: "See it on you. Upload a photo, choose a piece, and preview how it looks on you with dedicated neural try-on.",
 };
 
 export default function RootLayout({
@@ -25,9 +31,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-[#faf8f5] text-stone-900">{children}</body>
+      <body className="min-h-full flex flex-col bg-[#faf8f5] text-stone-900 selection:bg-stone-900 selection:text-stone-50 font-sans">
+        {children}
+      </body>
     </html>
   );
 }
