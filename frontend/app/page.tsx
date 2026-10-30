@@ -35,6 +35,13 @@ function validateImageFile(file: File): string | null {
 const CATEGORIES = ["Tops", "Pants", "Dresses", "Full look"] as const;
 const FITS = ["Natural", "Tucked in", "Worn open", "Oversized"] as const;
 
+const CATEGORY_MAP: Record<string, string> = {
+  "Tops": "upper_body",
+  "Pants": "lower_body",
+  "Dresses": "dresses",
+  "Full look": "full_look",
+};
+
 export default function WhearingApp() {
   // Service health
   const [, setServiceStatus] = useState<TryOnStatusResponse | null>(null);
@@ -61,9 +68,33 @@ export default function WhearingApp() {
   // History
   const [history, setHistory] = useState<TryOnRecord[]>([]);
 
-  // Refs for file uploads
+  // Refs
   const personInputRef = useRef<HTMLInputElement>(null);
   const garmentInputRef = useRef<HTMLInputElement>(null);
+  const mirrorRef = useRef<HTMLDivElement>(null);
+  const mainButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Floating button visibility observer
+  const [isMainButtonVisible, setIsMainButtonVisible] = useState(true);
+
+  const isReadyToTryOn = Boolean(personFile && garmentFile);
+  const showFloatingButton = !isMainButtonVisible && isReadyToTryOn;
+
+  // Intersection Observer on the main button
+  useEffect(() => {
+    const target = mainButtonRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsMainButtonVisible(entry.isIntersecting);
+      },
+      { threshold: 0.3 }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
 
   // Load history safely
   const fetchHistory = useCallback(async () => {
@@ -113,8 +144,6 @@ export default function WhearingApp() {
   }, [personPreview, garmentPreview]);
 
   // File Handlers
-  const isReadyToTryOn = Boolean(personFile && garmentFile);
-
   const handlePersonSelect = (file: File) => {
     const err = validateImageFile(file);
     if (err) {
@@ -165,7 +194,7 @@ export default function WhearingApp() {
     setGenerationError(null);
   };
 
-  // Generate Try-On (No sign in needed!)
+  // Generate Try-On
   const handleGenerate = async () => {
     if (!personFile) {
       setPersonError("Please upload your photo.");
@@ -183,7 +212,16 @@ export default function WhearingApp() {
     formData.append("person_image", personFile);
     formData.append("garment_image", garmentFile);
 
-    // Build prompt combining options
+    // Send category, fit and notes per requirements
+    const catCode = CATEGORY_MAP[selectedCategory] || "upper_body";
+    const fitCode = selectedFit.toLowerCase().replace(/\s+/g, "_");
+    formData.append("category", catCode);
+    formData.append("fit", fitCode);
+    if (extraNotes.trim()) {
+      formData.append("notes", extraNotes.trim());
+    }
+
+    // Build standard prompt for backward compatibility
     const promptParts = [
       `Category: ${selectedCategory}`,
       `Fit: ${selectedFit}`,
@@ -197,6 +235,11 @@ export default function WhearingApp() {
       const record = await generateVirtualTryOn(formData);
       setCurrentResult(record);
       setHistory((prev) => [record, ...prev]);
+
+      // Scroll mirror smoothly into view on success
+      setTimeout(() => {
+        mirrorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 100);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Virtual try-on generation failed.";
       setGenerationError(msg);
@@ -309,9 +352,9 @@ export default function WhearingApp() {
       </section>
 
       {/* The Fitting Room Section */}
-      <section className="bg-[#2338E0] rounded-[28px] sm:rounded-[36px] mx-4 sm:mx-8 p-6 sm:p-12 text-white relative shadow-[6px_6px_0_#111]">
+      <section className="bg-[#2338E0] rounded-[28px] sm:rounded-[36px] mx-4 sm:mx-8 p-6 sm:p-10 text-white relative shadow-[6px_6px_0_#111]">
         {/* Title Header */}
-        <div className="flex flex-wrap justify-between items-baseline gap-3 mb-8 sm:mb-9">
+        <div className="flex flex-wrap justify-between items-baseline gap-3 mb-6 sm:mb-8">
           <h2 className="m-0 font-marker font-normal text-3xl sm:text-[44px]">
             THE FITTING ROOM
           </h2>
@@ -321,10 +364,10 @@ export default function WhearingApp() {
         </div>
 
         {/* 3 Step Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 items-start">
           {/* Card 1: Your Photo */}
           <div className="md:-rotate-2 transition-transform">
-            <div className="flex items-center gap-2.5 mb-3.5">
+            <div className="flex items-center gap-2.5 mb-3">
               <span className="w-[34px] h-[34px] rounded-full bg-[#FFC81E] text-[#111] grid place-items-center font-bold">
                 1
               </span>
@@ -346,35 +389,41 @@ export default function WhearingApp() {
                 className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
               />
 
-              <div className="flex flex-col items-center justify-center gap-3 aspect-[3/4.2] min-h-[460px] sm:min-h-[500px] bg-[#E8EEFF] rounded text-center p-6 relative overflow-hidden">
+              {/* Preview Slot Capped with clamp to fit one screen */}
+              <div
+                className="flex flex-col items-center justify-center gap-3 bg-[#E8EEFF] rounded text-center p-4 relative overflow-hidden w-full"
+                style={{ height: "clamp(320px, 52vh, 480px)" }}
+              >
                 {personPreview ? (
-                  <div className="relative w-full h-full">
+                  <div className="relative w-full h-full flex items-center justify-center">
                     <Image
                       src={personPreview}
                       alt="Your photo"
                       fill
-                      className="object-cover rounded"
+                      className="object-contain rounded"
                       unoptimized
                     />
+                    {/* 44x44 Remove Button */}
                     <button
                       type="button"
                       onClick={clearPerson}
-                      className="absolute top-2 right-2 bg-white/90 text-[#111] p-1.5 rounded-full hover:bg-white border border-[#111] shadow-[2px_2px_0_#111] z-20 cursor-pointer"
+                      className="absolute top-2 right-2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-white text-[#111] rounded-full hover:bg-stone-100 border-2 border-[#111] shadow-[2px_2px_0_#111] z-20 cursor-pointer"
                       title="Remove image"
+                      aria-label="Remove photo"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-5 h-5 stroke-[2.5]" />
                     </button>
                   </div>
                 ) : (
                   <>
                     {/* Yellow smiley icon */}
-                    <svg width="68" height="68" viewBox="0 0 64 64" aria-hidden="true">
+                    <svg width="60" height="60" viewBox="0 0 64 64" aria-hidden="true">
                       <circle cx="32" cy="32" r="30" fill="#FFC81E" stroke="#111" strokeWidth="3" />
                       <circle cx="23" cy="26" r="3.5" fill="#111" />
                       <circle cx="41" cy="26" r="3.5" fill="#111" />
                       <path d="M19 38c6 10 20 10 26 0" fill="none" stroke="#111" strokeWidth="3" strokeLinecap="round" />
                     </svg>
-                    <span className="font-marker text-2xl sm:text-[28px]">ADD YOUR PHOTO</span>
+                    <span className="font-marker text-2xl sm:text-[26px]">ADD YOUR PHOTO</span>
                     <span className="text-sm text-[#3C3C3C] max-w-[210px] leading-snug">
                       Full body, facing forward, good light.
                     </span>
@@ -396,7 +445,7 @@ export default function WhearingApp() {
 
           {/* Card 2: The Garment */}
           <div className="md:rotate-[1.5deg] transition-transform">
-            <div className="flex items-center gap-2.5 mb-3.5">
+            <div className="flex items-center gap-2.5 mb-3">
               <span className="w-[34px] h-[34px] rounded-full bg-[#FFC81E] text-[#111] grid place-items-center font-bold">
                 2
               </span>
@@ -415,9 +464,13 @@ export default function WhearingApp() {
                 className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
               />
 
-              <div className="flex flex-col items-center justify-center gap-3 aspect-[3/4.2] min-h-[460px] sm:min-h-[500px] border-[3px] border-dashed border-[#111] rounded-md text-center p-6 relative overflow-hidden bg-[#FFC81E]">
+              {/* Preview Slot Capped with clamp to fit one screen */}
+              <div
+                className="flex flex-col items-center justify-center gap-3 border-[3px] border-dashed border-[#111] rounded-md text-center p-4 relative overflow-hidden bg-[#FFC81E] w-full"
+                style={{ height: "clamp(320px, 52vh, 480px)" }}
+              >
                 {garmentPreview ? (
-                  <div className="relative w-full h-full">
+                  <div className="relative w-full h-full flex items-center justify-center">
                     <Image
                       src={garmentPreview}
                       alt="The garment"
@@ -425,21 +478,23 @@ export default function WhearingApp() {
                       className="object-contain rounded"
                       unoptimized
                     />
+                    {/* 44x44 Remove Button */}
                     <button
                       type="button"
                       onClick={clearGarment}
-                      className="absolute top-2 right-2 bg-white text-[#111] p-1.5 rounded-full hover:bg-stone-100 border border-[#111] shadow-[2px_2px_0_#111] z-20 cursor-pointer"
+                      className="absolute top-2 right-2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-white text-[#111] rounded-full hover:bg-stone-100 border-2 border-[#111] shadow-[2px_2px_0_#111] z-20 cursor-pointer"
                       title="Remove image"
+                      aria-label="Remove garment"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-5 h-5 stroke-[2.5]" />
                     </button>
                   </div>
                 ) : (
                   <>
                     {/* Hanger Shirt SVG */}
                     <svg
-                      width="76"
-                      height="76"
+                      width="68"
+                      height="68"
                       viewBox="0 0 24 24"
                       fill="#fff"
                       stroke="#111"
@@ -449,7 +504,7 @@ export default function WhearingApp() {
                     >
                       <path d="M9 3 4 6l1.5 4L8 9v11h8V9l2.5 1L20 6l-5-3c-.5 1.5-1.5 2.2-3 2.2S9.5 4.5 9 3Z" />
                     </svg>
-                    <span className="font-marker text-2xl sm:text-[28px]">ADD A PIECE</span>
+                    <span className="font-marker text-2xl sm:text-[26px]">ADD A PIECE</span>
                     <span className="text-sm max-w-[210px] leading-snug">
                       A flat-lay or clean product shot. Shirt, pants, dress, anything.
                     </span>
@@ -465,74 +520,89 @@ export default function WhearingApp() {
             )}
           </div>
 
-          {/* Card 3: The Mirror (Tall Arched Full-Length Mirror) */}
+          {/* Card 3: The Mirror (Never cropped, natural proportions, decorative arch) */}
           <div className="md:-rotate-1 transition-transform">
-            <div className="flex items-center gap-2.5 mb-3.5">
+            <div className="flex items-center gap-2.5 mb-3">
               <span className="w-[34px] h-[34px] rounded-full bg-[#FFC81E] text-[#111] grid place-items-center font-bold">
                 3
               </span>
               <b className="text-lg">The mirror</b>
             </div>
 
+            {/*
+              Arch frame CSS per requirement:
+              border-radius: 50% 50% 16px 16px / 120px 120px 16px 16px;
+              padding: 90px 16px 20px;
+              NO overflow-hidden on the arch!
+            */}
             <div
-              className="bg-white text-[#111] p-4 pt-5 rounded-t-[999px] rounded-b-[18px] shadow-[6px_6px_0_#111] border-2 border-[#111] relative overflow-hidden"
+              ref={mirrorRef}
+              className="bg-white text-[#111] shadow-[6px_6px_0_#111] border-2 border-[#111] relative"
               style={{
+                borderRadius: "50% 50% 16px 16px / 120px 120px 16px 16px",
+                padding: "90px 16px 20px",
                 backgroundImage:
                   "linear-gradient(#E4E9F7 1px, transparent 1px), linear-gradient(90deg, #E4E9F7 1px, transparent 1px)",
                 backgroundSize: "22px 22px",
               }}
             >
-              <div className="flex flex-col items-center justify-center gap-3 aspect-[3/4.2] min-h-[460px] sm:min-h-[500px] text-center p-6 rounded-t-[999px] rounded-b-[10px] relative overflow-hidden">
-                {isGenerating ? (
-                  <div className="flex flex-col items-center justify-center p-4">
-                    <Loader2 className="w-12 h-12 text-[#2338E0] animate-spin mb-3" />
-                    <span className="font-marker text-2xl sm:text-3xl leading-tight">
-                      FITTING IN<br />PROGRESS...
-                    </span>
-                    <span className="font-caveat text-xl sm:text-2xl font-bold text-[#2338E0] mt-2">
-                      IDM-VTON neural rendering (~20s)
-                    </span>
+              {currentResult ? (
+                <div className="w-full flex flex-col items-center">
+                  {/*
+                    Result image: width 100%, height auto, display block,
+                    no fixed aspect ratio, NO object-cover. Full natural proportions.
+                  */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={getImageUrl(currentResult.result_image_url)}
+                    alt="Try-on result"
+                    className="w-full h-auto block rounded-lg border-2 border-[#111] shadow-[4px_4px_0_#111]"
+                    style={{ width: "100%", height: "auto", display: "block" }}
+                  />
+
+                  {/* Action buttons below the image in a row — never absolutely positioned */}
+                  <div className="flex items-center justify-center gap-3 mt-4 w-full">
+                    <button
+                      onClick={() => downloadResult(currentResult.result_image_url)}
+                      className="inline-flex items-center gap-1.5 bg-[#FFC81E] text-[#111] px-4 py-2 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      Download
+                    </button>
+                    <button
+                      onClick={handleClearAll}
+                      className="inline-flex items-center gap-1.5 bg-white text-[#111] px-4 py-2 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform cursor-pointer"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      New Look
+                    </button>
                   </div>
-                ) : currentResult ? (
-                  <div className="relative w-full h-full flex flex-col items-center justify-center">
-                    <div className="relative w-full h-full rounded-t-[999px] rounded-b-[8px] overflow-hidden border-2 border-[#111]">
-                      <Image
-                        src={getImageUrl(currentResult.result_image_url)}
-                        alt="Try-on result"
-                        fill
-                        className="object-cover"
-                        unoptimized
-                      />
+                </div>
+              ) : (
+                /* Empty / Loading state with min-height ~360px */
+                <div className="flex flex-col items-center justify-center text-center w-full min-h-[360px]">
+                  {isGenerating ? (
+                    <div className="flex flex-col items-center justify-center p-4 motion-safe:animate-pulse">
+                      <Loader2 className="w-10 h-10 text-[#2338E0] animate-spin mb-3" />
+                      <span className="font-marker text-2xl sm:text-[28px] leading-tight text-[#111]">
+                        CHECKING THE MIRROR…
+                      </span>
+                      <span className="font-caveat text-xl sm:text-2xl font-bold text-[#2338E0] mt-2">
+                        about 20 seconds ✎
+                      </span>
                     </div>
-                    {/* Action buttons on result */}
-                    <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center gap-2 z-20">
-                      <button
-                        onClick={() => downloadResult(currentResult.result_image_url)}
-                        className="inline-flex items-center gap-1.5 bg-[#FFC81E] text-[#111] px-4 py-2 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform cursor-pointer"
-                      >
-                        <Download className="w-4 h-4" />
-                        Download
-                      </button>
-                      <button
-                        onClick={handleClearAll}
-                        className="inline-flex items-center gap-1.5 bg-white text-[#111] px-4 py-2 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform cursor-pointer"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                        New Look
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <span className="font-marker text-2xl sm:text-[32px] leading-[1.1] max-w-[240px]">
-                      YOUR LOOK<br />SHOWS UP HERE
-                    </span>
-                    <span className="font-caveat text-2xl sm:text-[28px] font-bold text-[#2338E0] mt-1">
-                      about 20 seconds ✎
-                    </span>
-                  </>
-                )}
-              </div>
+                  ) : (
+                    <>
+                      <span className="font-marker text-2xl sm:text-[30px] leading-[1.1] max-w-[240px]">
+                        YOUR LOOK<br />SHOWS UP HERE
+                      </span>
+                      <span className="font-caveat text-2xl sm:text-[26px] font-bold text-[#2338E0] mt-1">
+                        about 20 seconds ✎
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {generationError && (
@@ -544,9 +614,9 @@ export default function WhearingApp() {
           </div>
         </div>
 
-        {/* Options Bar: Changing, Fit, Extra Notes, & TRY IT ON Button */}
-        <div className="mt-10 bg-white text-[#111] rounded-[24px] p-6 flex flex-wrap gap-6 items-center justify-between shadow-[6px_6px_0_#111]">
-          <div className="flex-1 min-w-[320px] grid gap-3.5">
+        {/* Options Bar: Changing, Fit, Extra Notes, & TRY IT ON Button with Hint Line */}
+        <div className="mt-8 bg-white text-[#111] rounded-[24px] p-6 flex flex-wrap gap-6 items-center justify-between shadow-[6px_6px_0_#111]">
+          <div className="flex-1 min-w-[280px] grid gap-3.5">
             {/* Changing row */}
             <div className="flex flex-wrap items-center gap-2">
               <b className="font-caveat text-[26px] min-w-[84px] select-none">Changing</b>
@@ -556,6 +626,8 @@ export default function WhearingApp() {
                   <button
                     key={cat}
                     type="button"
+                    role="button"
+                    aria-pressed={isSelected}
                     onClick={() => setSelectedCategory(cat)}
                     className={`min-h-[44px] px-4.5 rounded-full border-2 border-[#111] font-bold text-sm cursor-pointer transition-colors ${
                       isSelected ? "bg-[#FFC81E]" : "bg-white hover:bg-stone-50"
@@ -576,6 +648,8 @@ export default function WhearingApp() {
                   <button
                     key={fit}
                     type="button"
+                    role="button"
+                    aria-pressed={isSelected}
                     onClick={() => setSelectedFit(fit)}
                     className={`min-h-[44px] px-4.5 rounded-full border-2 border-[#111] font-bold text-sm cursor-pointer transition-colors ${
                       isSelected ? "bg-[#FFC81E]" : "bg-white hover:bg-stone-50"
@@ -601,23 +675,38 @@ export default function WhearingApp() {
             />
           </div>
 
-          {/* TRY IT ON Button: Muted Grey until images uploaded, then punchy Red */}
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className={`min-h-[84px] px-10 sm:px-13 rounded-full font-marker text-2xl sm:text-[32px] select-none transition-all shadow-[4px_4px_0_#111] ${
-              isReadyToTryOn
-                ? "bg-[#E3290F] hover:bg-[#c9240d] active:translate-x-1 active:translate-y-1 text-white border-0 cursor-pointer"
-                : "bg-[#E5E7EB] hover:bg-[#D4D4D8] text-[#111] border-2 border-[#111] cursor-pointer"
-            } ${isGenerating ? "opacity-50 cursor-not-allowed" : ""}`}
-            title={
-              !isReadyToTryOn
-                ? "Upload your photo and garment to activate try-on"
-                : "Ready! Click to try it on"
-            }
-          >
-            {isGenerating ? "FITTING..." : "TRY IT ON →"}
-          </button>
+          {/* Main Action Button with Hint Line */}
+          <div className="flex flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
+            <button
+              ref={mainButtonRef}
+              onClick={handleGenerate}
+              disabled={!isReadyToTryOn || isGenerating}
+              className={`min-h-[76px] sm:min-h-[84px] px-8 sm:px-12 rounded-full font-marker text-2xl sm:text-[32px] select-none transition-all w-full sm:w-auto ${
+                isReadyToTryOn && !isGenerating
+                  ? "bg-[#E3290F] hover:bg-[#c9240d] active:translate-x-1 active:translate-y-1 text-white border-0 shadow-[4px_4px_0_#111] cursor-pointer"
+                  : "bg-[#c9c9c9] text-[#4a4a4a] border-2 border-[#111] shadow-none cursor-not-allowed opacity-90"
+              }`}
+            >
+              {isGenerating ? "FITTING..." : "TRY IT ON →"}
+            </button>
+
+            {/* Hint line near main button */}
+            <div className="text-xs sm:text-sm font-bold font-dmsans tracking-tight text-center sm:text-right px-2">
+              {generationError ? (
+                <span className="text-[#E3290F]">
+                  THAT DIDN&apos;T WORK. TRY AGAIN. {generationError}
+                </span>
+              ) : !isReadyToTryOn ? (
+                <span className="text-[#555]">
+                  Add a photo and a piece to start.
+                </span>
+              ) : (
+                <span className="text-emerald-800">
+                  All set. Hit the button!
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -686,25 +775,24 @@ export default function WhearingApp() {
         </div>
       </section>
 
-      {/* Sticky Bottom Floating Button */}
-      <div className="sticky bottom-4 z-50 flex justify-center pointer-events-none h-0 overflow-visible">
-        <button
-          onClick={handleGenerate}
-          disabled={isGenerating}
-          className={`pointer-events-auto relative -top-[68px] min-h-[60px] px-9 border-[3px] border-[#111] rounded-full font-marker text-2xl shadow-[4px_4px_0_#111] select-none transition-all ${
-            isReadyToTryOn
-              ? "bg-[#E3290F] hover:bg-[#c9240d] text-white cursor-pointer"
-              : "bg-[#E5E7EB] hover:bg-[#D4D4D8] text-[#111] cursor-pointer"
-          } ${isGenerating ? "opacity-50 cursor-not-allowed" : ""}`}
-          title={
-            !isReadyToTryOn
-              ? "Upload your photo and garment to activate try-on"
-              : "Ready! Click to try it on"
-          }
-        >
-          {isGenerating ? "FITTING..." : "TRY IT ON →"}
-        </button>
-      </div>
+      {/*
+        Floating button:
+        Only show when:
+        (a) the main button is OUT of the viewport (IntersectionObserver threshold 0.3)
+        (b) both images are added
+        Fixed, bottom 16px, horizontally centered, z-index above content.
+      */}
+      {showFloatingButton && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex justify-center pointer-events-auto">
+          <button
+            onClick={handleGenerate}
+            disabled={!isReadyToTryOn || isGenerating}
+            className="min-h-[58px] px-8 border-[3px] border-[#111] rounded-full font-marker text-2xl shadow-[4px_4px_0_#111] select-none bg-[#E3290F] hover:bg-[#c9240d] text-white cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all"
+          >
+            {isGenerating ? "FITTING..." : "TRY IT ON →"}
+          </button>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="bg-[#2338E0] text-white py-9 px-6 sm:px-12 flex flex-wrap justify-between gap-4 items-center">
