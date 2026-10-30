@@ -16,6 +16,8 @@ engine = create_async_engine(
     connect_args=connect_args,
     # Configure connection pool safely for cloud and local
     pool_pre_ping=True,
+    pool_recycle=300,
+    pool_timeout=10,
 )
 
 AsyncSessionLocal = async_sessionmaker(

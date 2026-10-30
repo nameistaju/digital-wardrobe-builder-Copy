@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     APP_ENV: str = Field(default="development", description="Environment mode: development, test, or production")
     FRONTEND_ORIGIN: str = Field(default="http://localhost:3000", description="Primary allowed origin for frontend client")
     CORS_ORIGINS: Optional[str] = Field(default=None, description="Comma-separated list of additional allowed CORS origins")
-    HOST: str = Field(default="127.0.0.1", description="Host address to bind the API server")
+    HOST: str = Field(default="0.0.0.0", description="Host address to bind the API server")
     PORT: int = Field(default=8000, description="Port number to bind the API server (Render sets $PORT)")
 
     # Database: Supports SQLite (aiosqlite) locally and Supabase PostgreSQL (asyncpg) in production
@@ -157,6 +157,9 @@ class Settings(BaseSettings):
 
         # Asyncpg uses ssl parameter in connect_args, not in query string
         if clean_url.startswith("postgresql+asyncpg://"):
+            # Set connection and command timeouts so DB queries never hang indefinitely
+            connect_args["timeout"] = 10
+            connect_args["command_timeout"] = 30
             # If sslmode=require is in URL, strip it so asyncpg doesn't error
             if "sslmode=require" in clean_url:
                 clean_url = clean_url.replace("?sslmode=require", "").replace("&sslmode=require", "")

@@ -25,6 +25,16 @@ def test_root_endpoint():
     assert data["health"] == "/api/v1/health"
 
 
+def test_root_health_check_endpoint():
+    """Test that lightweight GET /health returns 200 OK for cloud load balancers."""
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["app"] == settings.PROJECT_NAME
+    assert "version" in data
+
+
 def test_cors_headers():
     """Test that configured CORS origin headers are permitted."""
     origin = settings.FRONTEND_ORIGIN
