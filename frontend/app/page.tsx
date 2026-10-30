@@ -8,22 +8,14 @@ import {
   AlertCircle,
   X,
   Loader2,
-  Check,
 } from "lucide-react";
 import {
-  User,
   TryOnRecord,
   TryOnStatusResponse,
   getTryOnStatus,
   generateVirtualTryOn,
   getTryOnHistory,
   getImageUrl,
-  getCurrentUser,
-  loginUser,
-  registerUser,
-  demoLogin,
-  getAuthToken,
-  removeAuthToken,
 } from "@/lib/api";
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
@@ -44,16 +36,6 @@ const CATEGORIES = ["Tops", "Pants", "Dresses", "Full look"] as const;
 const FITS = ["Natural", "Tucked in", "Worn open", "Oversized"] as const;
 
 export default function WhearingApp() {
-  // Auth state
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authFullName, setAuthFullName] = useState("");
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
-
   // Service health
   const [, setServiceStatus] = useState<TryOnStatusResponse | null>(null);
 
@@ -85,7 +67,6 @@ export default function WhearingApp() {
 
   // Load history safely
   const fetchHistory = useCallback(async () => {
-    if (!getAuthToken()) return;
     try {
       const res = await getTryOnHistory(12, 0);
       setHistory(res.items);
@@ -114,19 +95,7 @@ export default function WhearingApp() {
         }
       }
 
-      const token = getAuthToken();
-      if (token) {
-        try {
-          const user = await getCurrentUser();
-          if (isMounted) {
-            setCurrentUser(user);
-            fetchHistory();
-          }
-        } catch {
-          removeAuthToken();
-          if (isMounted) setCurrentUser(null);
-        }
-      }
+      fetchHistory();
     }
 
     init();
@@ -194,54 +163,7 @@ export default function WhearingApp() {
     setGenerationError(null);
   };
 
-  // Auth form submissions
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmittingAuth(true);
-    setAuthError(null);
-
-    try {
-      if (authMode === "register") {
-        const res = await registerUser(authEmail, authPassword, authFullName || undefined);
-        setCurrentUser(res.user);
-        setIsAuthModalOpen(false);
-        fetchHistory();
-      } else {
-        const res = await loginUser(authEmail, authPassword);
-        setCurrentUser(res.user);
-        setIsAuthModalOpen(false);
-        fetchHistory();
-      }
-    } catch (err: unknown) {
-      setAuthError(err instanceof Error ? err.message : "Authentication failed.");
-    } finally {
-      setIsSubmittingAuth(false);
-    }
-  };
-
-  const handleDemoSignIn = async () => {
-    setIsSubmittingAuth(true);
-    setAuthError(null);
-    try {
-      const res = await demoLogin();
-      setCurrentUser(res.user);
-      setIsAuthModalOpen(false);
-      fetchHistory();
-    } catch (err: unknown) {
-      setAuthError(err instanceof Error ? err.message : "Demo sign in failed.");
-    } finally {
-      setIsSubmittingAuth(false);
-    }
-  };
-
-  const handleLogout = () => {
-    removeAuthToken();
-    setCurrentUser(null);
-    setHistory([]);
-    setCurrentResult(null);
-  };
-
-  // Generate Try-On
+  // Generate Try-On (No sign in needed!)
   const handleGenerate = async () => {
     if (!personFile) {
       setPersonError("Please upload your photo.");
@@ -249,11 +171,6 @@ export default function WhearingApp() {
     }
     if (!garmentFile) {
       setGarmentError("Please upload a garment photo.");
-      return;
-    }
-
-    if (!getAuthToken() || !currentUser) {
-      setIsAuthModalOpen(true);
       return;
     }
 
@@ -310,31 +227,6 @@ export default function WhearingApp() {
       <header className="flex flex-wrap items-center justify-between gap-4 px-6 sm:px-12 py-5 max-w-[1440px] mx-auto">
         <div className="font-marker text-3xl sm:text-[34px] leading-[0.9] -rotate-2 select-none">
           whearing<span className="text-[#2338E0]">:)</span>
-        </div>
-
-        {/* Minimal Auth Bar in Header */}
-        <div className="flex items-center gap-3">
-          {currentUser ? (
-            <div className="flex items-center gap-2">
-              <span className="font-caveat text-xl font-bold text-[#111] bg-[#FFC81E] px-3 py-1 rounded-full border-2 border-[#111] shadow-[2px_2px_0_#111]">
-                hi, {currentUser.full_name || currentUser.email.split("@")[0]}!
-              </span>
-              <button
-                onClick={handleLogout}
-                className="text-xs font-bold text-[#111] hover:text-[#E3290F] px-2.5 py-1.5 rounded-md hover:bg-stone-100 transition-colors"
-                title="Sign out"
-              >
-                Sign out
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setIsAuthModalOpen(true)}
-              className="text-xs font-bold font-dmsans px-4 py-2 border-2 border-[#111] rounded-full shadow-[2px_2px_0_#111] hover:bg-[#FFC81E] transition-colors"
-            >
-              Sign In / Demo
-            </button>
-          )}
         </div>
       </header>
 
@@ -614,14 +506,14 @@ export default function WhearingApp() {
                     <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-2 z-20">
                       <button
                         onClick={() => downloadResult(currentResult.result_image_url)}
-                        className="inline-flex items-center gap-1.5 bg-[#FFC81E] text-[#111] px-3.5 py-1.5 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform"
+                        className="inline-flex items-center gap-1.5 bg-[#FFC81E] text-[#111] px-3.5 py-1.5 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" />
                         Download
                       </button>
                       <button
                         onClick={handleClearAll}
-                        className="inline-flex items-center gap-1.5 bg-white text-[#111] px-3.5 py-1.5 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform"
+                        className="inline-flex items-center gap-1.5 bg-white text-[#111] px-3.5 py-1.5 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform cursor-pointer"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         New Look
@@ -799,106 +691,6 @@ export default function WhearingApp() {
         <div className="font-marker text-3xl sm:text-[32px] select-none">whearing:)</div>
         <span className="text-sm font-medium">Made for people who love getting dressed.</span>
       </footer>
-
-      {/* Authentication Modal */}
-      {isAuthModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border-3 border-[#111] rounded-2xl shadow-[8px_8px_0_#111] p-6 relative">
-            <button
-              onClick={() => setIsAuthModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 text-stone-500 hover:text-stone-900 rounded-full hover:bg-stone-100 border border-[#111]"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center mb-6">
-              <div className="font-marker text-3xl mb-1">
-                whearing<span className="text-[#2338E0]">:)</span>
-              </div>
-              <h3 className="text-xl font-bold font-dmsans">
-                {authMode === "login" ? "Sign in to save looks" : "Create your account"}
-              </h3>
-            </div>
-
-            {authError && (
-              <div className="mb-4 p-3 bg-red-50 border-2 border-[#E3290F] text-[#E3290F] rounded-lg text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{authError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleAuthSubmit} className="space-y-4">
-              {authMode === "register" && (
-                <div>
-                  <label className="block text-xs font-bold uppercase mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    value={authFullName}
-                    onChange={(e) => setAuthFullName(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-[#111] rounded-lg text-sm outline-none"
-                    placeholder="Your Name"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold uppercase mb-1">Email</label>
-                <input
-                  type="email"
-                  required
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full px-3 py-2 border-2 border-[#111] rounded-lg text-sm outline-none"
-                  placeholder="you@example.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase mb-1">Password</label>
-                <input
-                  type="password"
-                  required
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full px-3 py-2 border-2 border-[#111] rounded-lg text-sm outline-none"
-                  placeholder="••••••••"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmittingAuth}
-                className="w-full py-3 bg-[#2338E0] hover:bg-blue-700 text-white font-bold rounded-lg border-2 border-[#111] shadow-[3px_3px_0_#111] transition-transform active:translate-x-0.5 active:translate-y-0.5"
-              >
-                {isSubmittingAuth ? "Authenticating..." : authMode === "login" ? "Sign In" : "Register"}
-              </button>
-            </form>
-
-            <div className="mt-4 pt-4 border-t-2 border-dashed border-[#111] flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={handleDemoSignIn}
-                disabled={isSubmittingAuth}
-                className="w-full py-2.5 bg-[#FFC81E] hover:bg-yellow-400 text-[#111] font-bold rounded-lg border-2 border-[#111] shadow-[3px_3px_0_#111] flex items-center justify-center gap-2 text-sm"
-              >
-                <Check className="w-4 h-4" /> Instant 1-Click Demo Sign-In
-              </button>
-
-              <div className="text-center mt-2">
-                <button
-                  type="button"
-                  onClick={() => setAuthMode(authMode === "login" ? "register" : "login")}
-                  className="text-xs font-bold underline hover:text-[#2338E0]"
-                >
-                  {authMode === "login"
-                    ? "Don't have an account? Sign up"
-                    : "Already have an account? Sign in"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

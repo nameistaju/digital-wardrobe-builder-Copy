@@ -7,7 +7,7 @@ from sqlalchemy import select, func, desc
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.storage import storage_service
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user_or_guest
 from app.models.user import User
 from app.models.garment import Garment
 from app.models.tryon import TryOnRecord
@@ -41,7 +41,7 @@ async def create_virtual_tryon(
     garment_id: Optional[int] = Form(None, description="ID of existing wardrobe item to try on"),
     prompt: Optional[str] = Form(None, description="Optional styling or draping instruction"),
     model: Optional[str] = Form("idm-vton", description="Try-on engine (IDM-VTON dedicated neural pipeline)"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_or_guest),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -146,21 +146,35 @@ async def create_virtual_tryon(
 async def get_tryon_history(
     limit: int = 20,
     offset: int = 0,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_or_guest),
     db: AsyncSession = Depends(get_db),
 ):
-    """Retrieves previous AI Virtual Try-On generations for the current user."""
-    count_query = select(func.count()).select_from(TryOnRecord).where(TryOnRecord.user_id == current_user.id)
-    total_result = await db.execute(count_query)
-    total = total_result.scalar_one()
+    """Retrieves previous AI Virtual Try-On generations for the current user or recent looks for guests."""
+    if current_user.email == "guest@whearing.com":
+        count_query = select(func.count()).select_from(TryOnRecord).where(TryOnRecord.status == "completed")
+        total_result = await db.execute(count_query)
+        total = total_result.scalar_one()
 
-    query = (
-        select(TryOnRecord)
-        .where(TryOnRecord.user_id == current_user.id)
-        .order_by(desc(TryOnRecord.created_at))
-        .offset(offset)
-        .limit(min(limit, 100))
-    )
+        query = (
+            select(TryOnRecord)
+            .where(TryOnRecord.status == "completed")
+            .order_by(desc(TryOnRecord.created_at))
+            .offset(offset)
+            .limit(min(limit, 100))
+        )
+    else:
+        count_query = select(func.count()).select_from(TryOnRecord).where(TryOnRecord.user_id == current_user.id)
+        total_result = await db.execute(count_query)
+        total = total_result.scalar_one()
+
+        query = (
+            select(TryOnRecord)
+            .where(TryOnRecord.user_id == current_user.id)
+            .order_by(desc(TryOnRecord.created_at))
+            .offset(offset)
+            .limit(min(limit, 100))
+        )
+
     result = await db.execute(query)
     items = result.scalars().all()
 

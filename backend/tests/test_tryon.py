@@ -167,3 +167,31 @@ def test_tryon_failure_does_not_save_history():
         )
         assert hist_res.status_code == 200
         assert hist_res.json()["total"] == 0
+
+
+def test_tryon_without_auth_guest_mode():
+    """Verifies that users can generate virtual try-ons without any sign in or Authorization header."""
+    person_img = create_test_image_bytes((120, 150, 180))
+    garment_img = create_test_image_bytes((220, 80, 50))
+    mock_result_bytes = create_test_image_bytes((100, 200, 100))
+
+    with patch("app.api.v1.tryon.call_idm_vton", return_value=mock_result_bytes):
+        # Request with NO headers at all
+        res = client.post(
+            "/api/v1/try-on/generate",
+            files={
+                "person_image": ("person.jpg", io.BytesIO(person_img), "image/jpeg"),
+                "garment_image": ("jacket.jpg", io.BytesIO(garment_img), "image/jpeg"),
+            },
+            data={"prompt": "Guest try-on without signing in"},
+        )
+        assert res.status_code == 201
+        data = res.json()
+        assert data["id"] > 0
+        assert data["status"] == "completed"
+
+        # Verify history is also accessible without auth
+        hist_res = client.get("/api/v1/try-on/history")
+        assert hist_res.status_code == 200
+        assert len(hist_res.json()["items"]) >= 1
+
