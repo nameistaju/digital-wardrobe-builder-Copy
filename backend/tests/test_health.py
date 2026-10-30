@@ -36,11 +36,15 @@ def test_root_health_check_endpoint():
 
 
 def test_cors_headers():
-    """Test that configured CORS origin headers are permitted."""
-    origin = settings.FRONTEND_ORIGIN
-    response = client.get(
-        "/api/v1/health",
-        headers={"Origin": origin},
-    )
-    assert response.status_code == 200
-    assert response.headers.get("access-control-allow-origin") == origin
+    """Test that configured CORS origin headers and Vercel domains are permitted."""
+    for origin in [
+        settings.FRONTEND_ORIGIN,
+        "https://digital-wardrobe-builder.vercel.app",
+        "https://digital-wardrobe-builder-git-feature.vercel.app",
+    ]:
+        response = client.get(
+            "/api/v1/health",
+            headers={"Origin": origin},
+        )
+        assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") == origin

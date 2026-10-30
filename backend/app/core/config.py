@@ -107,20 +107,21 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         """Parsed list of allowed origins for CORS middleware."""
-        origins: List[str] = []
+        origins: List[str] = [
+            "https://digital-wardrobe-builder.vercel.app",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
         if self.FRONTEND_ORIGIN:
-            origins.append(self.FRONTEND_ORIGIN)
+            cleaned = self.FRONTEND_ORIGIN.strip().rstrip("/")
+            if cleaned and cleaned not in origins:
+                origins.append(cleaned)
 
         if self.CORS_ORIGINS:
             for item in self.CORS_ORIGINS.split(","):
                 cleaned = item.strip().rstrip("/")
                 if cleaned and cleaned not in origins:
                     origins.append(cleaned)
-
-        if self.APP_ENV == "development":
-            for fallback in ("http://localhost:3000", "http://127.0.0.1:3000"):
-                if fallback not in origins:
-                    origins.append(fallback)
 
         return origins
 

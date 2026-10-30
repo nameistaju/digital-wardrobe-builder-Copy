@@ -31,43 +31,37 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-# Verify optional rembg availability (session initialized lazily on first inference)
+# Optional rembg neural session (only loaded if rembg is installed in the environment)
 REMBG_AVAILABLE = False
 _u2netp_session = None
-
-try:
-    import rembg
-    REMBG_AVAILABLE = True
-except Exception:
-    REMBG_AVAILABLE = False
-    logger.info("rembg not installed or failed to import. Using fallback alpha masking.")
 
 
 def _get_u2netp_session():
     """Lazily initializes the rembg session on demand rather than at module import time."""
-    global _u2netp_session
-    if _u2netp_session is None and REMBG_AVAILABLE:
+    global _u2netp_session, REMBG_AVAILABLE
+    if _u2netp_session is None:
         try:
             import rembg
+            REMBG_AVAILABLE = True
             _u2netp_session = rembg.new_session("u2netp")
             logger.info("rembg u2netp neural segmentation session initialized.")
         except Exception as exc:
-            logger.warning("Could not initialize u2netp session: %s. Using default rembg session.", exc)
+            REMBG_AVAILABLE = False
+            logger.debug("rembg not installed or session failed to initialize (%s). Using Pillow alpha masking.", exc)
     return _u2netp_session
 
 
 def remove_image_background(image_bytes: bytes) -> bytes:
     """
     Removes image background.
-    - Uses U2Net-p neural network when rembg is available.
-    - Otherwise applies deterministic luminance-alpha corner contrast isolation.
+    - Uses U2Net-p neural network if rembg is installed and available.
+    - Otherwise applies fast, lightweight deterministic luminance-alpha corner contrast isolation.
     """
-    if REMBG_AVAILABLE:
+    session = _get_u2netp_session()
+    if session is not None:
         try:
-            session = _get_u2netp_session()
-            if session is not None:
-                return rembg.remove(image_bytes, session=session)
-            return rembg.remove(image_bytes)
+            import rembg
+            return rembg.remove(image_bytes, session=session)
         except Exception as e:
             logger.warning("rembg inference error: %s. Falling back to Pillow alpha mask.", e)
 
