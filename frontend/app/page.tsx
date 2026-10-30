@@ -113,6 +113,8 @@ export default function WhearingApp() {
   }, [personPreview, garmentPreview]);
 
   // File Handlers
+  const isReadyToTryOn = Boolean(personFile && garmentFile);
+
   const handlePersonSelect = (file: File) => {
     const err = validateImageFile(file);
     if (err) {
@@ -329,7 +331,7 @@ export default function WhearingApp() {
               <b className="text-lg">Your photo</b>
             </div>
 
-            <label className="relative block bg-white text-[#111] p-4 pb-14 rounded-md shadow-[6px_6px_0_#111] cursor-pointer group">
+            <label className="relative block bg-white text-[#111] p-4 pb-14 rounded-md shadow-[6px_6px_0_#111] border-2 border-[#111] cursor-pointer group">
               {/* Red tape top */}
               <span className="absolute -top-3.5 left-1/2 w-[90px] h-7 -ml-[45px] bg-[#E3290F] opacity-90 rotate-3 z-10 pointer-events-none" />
 
@@ -344,7 +346,7 @@ export default function WhearingApp() {
                 className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
               />
 
-              <div className="flex flex-col items-center justify-center gap-2.5 aspect-[1/1.05] bg-[#E8EEFF] rounded text-center p-5 relative overflow-hidden">
+              <div className="flex flex-col items-center justify-center gap-3 aspect-[3/4.2] min-h-[460px] sm:min-h-[500px] bg-[#E8EEFF] rounded text-center p-6 relative overflow-hidden">
                 {personPreview ? (
                   <div className="relative w-full h-full">
                     <Image
@@ -366,13 +368,13 @@ export default function WhearingApp() {
                 ) : (
                   <>
                     {/* Yellow smiley icon */}
-                    <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+                    <svg width="68" height="68" viewBox="0 0 64 64" aria-hidden="true">
                       <circle cx="32" cy="32" r="30" fill="#FFC81E" stroke="#111" strokeWidth="3" />
                       <circle cx="23" cy="26" r="3.5" fill="#111" />
                       <circle cx="41" cy="26" r="3.5" fill="#111" />
                       <path d="M19 38c6 10 20 10 26 0" fill="none" stroke="#111" strokeWidth="3" strokeLinecap="round" />
                     </svg>
-                    <span className="font-marker text-2xl sm:text-[26px]">ADD YOUR PHOTO</span>
+                    <span className="font-marker text-2xl sm:text-[28px]">ADD YOUR PHOTO</span>
                     <span className="text-sm text-[#3C3C3C] max-w-[210px] leading-snug">
                       Full body, facing forward, good light.
                     </span>
@@ -401,7 +403,7 @@ export default function WhearingApp() {
               <b className="text-lg">The garment</b>
             </div>
 
-            <label className="relative block bg-[#FFC81E] text-[#111] p-5 rounded-[10px] shadow-[6px_6px_0_#111] cursor-pointer group">
+            <label className="relative block bg-[#FFC81E] text-[#111] p-5 rounded-[12px] shadow-[6px_6px_0_#111] border-2 border-[#111] cursor-pointer group">
               <input
                 ref={garmentInputRef}
                 type="file"
@@ -413,7 +415,7 @@ export default function WhearingApp() {
                 className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
               />
 
-              <div className="flex flex-col items-center justify-center gap-2.5 aspect-[1/1.05] border-[3px] border-dashed border-[#111] rounded-md text-center p-5 relative overflow-hidden bg-[#FFC81E]">
+              <div className="flex flex-col items-center justify-center gap-3 aspect-[3/4.2] min-h-[460px] sm:min-h-[500px] border-[3px] border-dashed border-[#111] rounded-md text-center p-6 relative overflow-hidden bg-[#FFC81E]">
                 {garmentPreview ? (
                   <div className="relative w-full h-full">
                     <Image
@@ -436,8 +438,8 @@ export default function WhearingApp() {
                   <>
                     {/* Hanger Shirt SVG */}
                     <svg
-                      width="72"
-                      height="72"
+                      width="76"
+                      height="76"
                       viewBox="0 0 24 24"
                       fill="#fff"
                       stroke="#111"
@@ -447,7 +449,7 @@ export default function WhearingApp() {
                     >
                       <path d="M9 3 4 6l1.5 4L8 9v11h8V9l2.5 1L20 6l-5-3c-.5 1.5-1.5 2.2-3 2.2S9.5 4.5 9 3Z" />
                     </svg>
-                    <span className="font-marker text-2xl sm:text-[26px]">ADD A PIECE</span>
+                    <span className="font-marker text-2xl sm:text-[28px]">ADD A PIECE</span>
                     <span className="text-sm max-w-[210px] leading-snug">
                       A flat-lay or clean product shot. Shirt, pants, dress, anything.
                     </span>
@@ -463,7 +465,7 @@ export default function WhearingApp() {
             )}
           </div>
 
-          {/* Card 3: The Mirror */}
+          {/* Card 3: The Mirror (Tall Arched Full-Length Mirror) */}
           <div className="md:-rotate-1 transition-transform">
             <div className="flex items-center gap-2.5 mb-3.5">
               <span className="w-[34px] h-[34px] rounded-full bg-[#FFC81E] text-[#111] grid place-items-center font-bold">
@@ -473,27 +475,27 @@ export default function WhearingApp() {
             </div>
 
             <div
-              className="bg-white text-[#111] p-4 rounded-t-[999px] rounded-b-[14px] shadow-[6px_6px_0_#111] relative overflow-hidden"
+              className="bg-white text-[#111] p-4 pt-5 rounded-t-[999px] rounded-b-[18px] shadow-[6px_6px_0_#111] border-2 border-[#111] relative overflow-hidden"
               style={{
                 backgroundImage:
                   "linear-gradient(#E4E9F7 1px, transparent 1px), linear-gradient(90deg, #E4E9F7 1px, transparent 1px)",
                 backgroundSize: "22px 22px",
               }}
             >
-              <div className="flex flex-col items-center justify-center gap-2.5 aspect-[1/1.05] text-center p-5 rounded-t-[999px] rounded-b-[6px] relative overflow-hidden">
+              <div className="flex flex-col items-center justify-center gap-3 aspect-[3/4.2] min-h-[460px] sm:min-h-[500px] text-center p-6 rounded-t-[999px] rounded-b-[10px] relative overflow-hidden">
                 {isGenerating ? (
                   <div className="flex flex-col items-center justify-center p-4">
                     <Loader2 className="w-12 h-12 text-[#2338E0] animate-spin mb-3" />
-                    <span className="font-marker text-2xl leading-tight">
+                    <span className="font-marker text-2xl sm:text-3xl leading-tight">
                       FITTING IN<br />PROGRESS...
                     </span>
-                    <span className="font-caveat text-xl font-bold text-[#2338E0] mt-1">
+                    <span className="font-caveat text-xl sm:text-2xl font-bold text-[#2338E0] mt-2">
                       IDM-VTON neural rendering (~20s)
                     </span>
                   </div>
                 ) : currentResult ? (
                   <div className="relative w-full h-full flex flex-col items-center justify-center">
-                    <div className="relative w-full h-full rounded-t-[999px] overflow-hidden border-2 border-[#111]">
+                    <div className="relative w-full h-full rounded-t-[999px] rounded-b-[8px] overflow-hidden border-2 border-[#111]">
                       <Image
                         src={getImageUrl(currentResult.result_image_url)}
                         alt="Try-on result"
@@ -503,29 +505,29 @@ export default function WhearingApp() {
                       />
                     </div>
                     {/* Action buttons on result */}
-                    <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-2 z-20">
+                    <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center gap-2 z-20">
                       <button
                         onClick={() => downloadResult(currentResult.result_image_url)}
-                        className="inline-flex items-center gap-1.5 bg-[#FFC81E] text-[#111] px-3.5 py-1.5 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform cursor-pointer"
+                        className="inline-flex items-center gap-1.5 bg-[#FFC81E] text-[#111] px-4 py-2 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform cursor-pointer"
                       >
-                        <Download className="w-3.5 h-3.5" />
+                        <Download className="w-4 h-4" />
                         Download
                       </button>
                       <button
                         onClick={handleClearAll}
-                        className="inline-flex items-center gap-1.5 bg-white text-[#111] px-3.5 py-1.5 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform cursor-pointer"
+                        className="inline-flex items-center gap-1.5 bg-white text-[#111] px-4 py-2 rounded-full font-bold text-xs border-2 border-[#111] shadow-[2px_2px_0_#111] hover:scale-105 transition-transform cursor-pointer"
                       >
-                        <RotateCcw className="w-3.5 h-3.5" />
+                        <RotateCcw className="w-4 h-4" />
                         New Look
                       </button>
                     </div>
                   </div>
                 ) : (
                   <>
-                    <span className="font-marker text-2xl sm:text-[28px] leading-[1.1]">
+                    <span className="font-marker text-2xl sm:text-[32px] leading-[1.1] max-w-[240px]">
                       YOUR LOOK<br />SHOWS UP HERE
                     </span>
-                    <span className="font-caveat text-2xl font-bold text-[#2338E0]">
+                    <span className="font-caveat text-2xl sm:text-[28px] font-bold text-[#2338E0] mt-1">
                       about 20 seconds ✎
                     </span>
                   </>
@@ -599,11 +601,20 @@ export default function WhearingApp() {
             />
           </div>
 
-          {/* Big Red TRY IT ON Button */}
+          {/* TRY IT ON Button: Muted Grey until images uploaded, then punchy Red */}
           <button
             onClick={handleGenerate}
             disabled={isGenerating}
-            className="min-h-[84px] px-10 sm:px-13 border-0 rounded-full bg-[#E3290F] hover:bg-[#c9240d] active:translate-x-1 active:translate-y-1 text-white font-marker text-2xl sm:text-[32px] cursor-pointer shadow-[4px_4px_0_#111] disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
+            className={`min-h-[84px] px-10 sm:px-13 rounded-full font-marker text-2xl sm:text-[32px] select-none transition-all shadow-[4px_4px_0_#111] ${
+              isReadyToTryOn
+                ? "bg-[#E3290F] hover:bg-[#c9240d] active:translate-x-1 active:translate-y-1 text-white border-0 cursor-pointer"
+                : "bg-[#E5E7EB] hover:bg-[#D4D4D8] text-[#111] border-2 border-[#111] cursor-pointer"
+            } ${isGenerating ? "opacity-50 cursor-not-allowed" : ""}`}
+            title={
+              !isReadyToTryOn
+                ? "Upload your photo and garment to activate try-on"
+                : "Ready! Click to try it on"
+            }
           >
             {isGenerating ? "FITTING..." : "TRY IT ON →"}
           </button>
@@ -680,7 +691,16 @@ export default function WhearingApp() {
         <button
           onClick={handleGenerate}
           disabled={isGenerating}
-          className="pointer-events-auto relative -top-[68px] min-h-[60px] px-9 border-[3px] border-[#111] rounded-full bg-[#E3290F] hover:bg-[#c9240d] text-white font-marker text-2xl cursor-pointer shadow-[4px_4px_0_#111] disabled:opacity-50 select-none"
+          className={`pointer-events-auto relative -top-[68px] min-h-[60px] px-9 border-[3px] border-[#111] rounded-full font-marker text-2xl shadow-[4px_4px_0_#111] select-none transition-all ${
+            isReadyToTryOn
+              ? "bg-[#E3290F] hover:bg-[#c9240d] text-white cursor-pointer"
+              : "bg-[#E5E7EB] hover:bg-[#D4D4D8] text-[#111] cursor-pointer"
+          } ${isGenerating ? "opacity-50 cursor-not-allowed" : ""}`}
+          title={
+            !isReadyToTryOn
+              ? "Upload your photo and garment to activate try-on"
+              : "Ready! Click to try it on"
+          }
         >
           {isGenerating ? "FITTING..." : "TRY IT ON →"}
         </button>
