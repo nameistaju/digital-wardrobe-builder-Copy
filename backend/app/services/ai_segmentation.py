@@ -31,21 +31,29 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-# Verify optional rembg availability & initialize cached session
+# Verify optional rembg availability (session initialized lazily on first inference)
 REMBG_AVAILABLE = False
 _u2netp_session = None
 
 try:
     import rembg
     REMBG_AVAILABLE = True
-    try:
-        _u2netp_session = rembg.new_session("u2netp")
-        logger.info("rembg u2netp neural segmentation session initialized.")
-    except Exception as exc:
-        logger.warning("Could not initialize u2netp session: %s. Using default rembg session.", exc)
 except Exception:
     REMBG_AVAILABLE = False
     logger.info("rembg not installed or failed to import. Using fallback alpha masking.")
+
+
+def _get_u2netp_session():
+    """Lazily initializes the rembg session on demand rather than at module import time."""
+    global _u2netp_session
+    if _u2netp_session is None and REMBG_AVAILABLE:
+        try:
+            import rembg
+            _u2netp_session = rembg.new_session("u2netp")
+            logger.info("rembg u2netp neural segmentation session initialized.")
+        except Exception as exc:
+            logger.warning("Could not initialize u2netp session: %s. Using default rembg session.", exc)
+    return _u2netp_session
 
 
 def remove_image_background(image_bytes: bytes) -> bytes:
@@ -56,8 +64,9 @@ def remove_image_background(image_bytes: bytes) -> bytes:
     """
     if REMBG_AVAILABLE:
         try:
-            if _u2netp_session is not None:
-                return rembg.remove(image_bytes, session=_u2netp_session)
+            session = _get_u2netp_session()
+            if session is not None:
+                return rembg.remove(image_bytes, session=session)
             return rembg.remove(image_bytes)
         except Exception as e:
             logger.warning("rembg inference error: %s. Falling back to Pillow alpha mask.", e)

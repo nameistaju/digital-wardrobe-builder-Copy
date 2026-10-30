@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
@@ -9,16 +10,21 @@ from app.api.v1 import api_router
 from app.core.config import settings
 from app.core.database import init_db
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager: ensure storage exists and initialize DB without blocking server port binding."""
-    # Ensure storage directories exist immediately
+    logger.info("Lifespan startup: verifying storage paths...")
     settings.absolute_storage_path.mkdir(parents=True, exist_ok=True)
+    logger.info("Lifespan startup: scheduling async DB schema verification...")
     # Initialize database in the background so Uvicorn binds immediately to the port
     # and satisfies cloud port-binding probes without waiting for remote DB handshakes.
     asyncio.create_task(init_db())
+    logger.info("Lifespan startup complete: port is ready to accept traffic.")
     yield
+    logger.info("Lifespan shutdown complete.")
 
 
 app = FastAPI(
